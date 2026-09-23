@@ -90,6 +90,8 @@ fun IptvAppNavigation(
         composable("player") {
             PlayerScreen(
                 viewModel = playerViewModel,
+                favoriteIds = playlistState.favoriteIds,
+                onToggleFavorite = { playlistViewModel.toggleFavorite(it) },
                 onBack = {
                     navController.popBackStack()
                 }

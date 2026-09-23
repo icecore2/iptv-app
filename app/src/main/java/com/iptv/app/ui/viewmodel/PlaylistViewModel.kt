@@ -24,10 +24,24 @@ enum class ChannelSortOrder(val label: String) {
     GROUP("Group / Category")
 }
 
+enum class ContentTypeFilter(val label: String) {
+    ALL("All Channels"),
+    LIVE_TV("Live TV"),
+    VOD("Movies & VOD"),
+    FAVORITES("Favorites")
+}
+
+enum class ViewMode {
+    LIST,
+    GRID
+}
+
 data class PlaylistUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
     val playlist: M3uPlaylist? = null,
+    val currentUrl: String? = null,
+    val currentEpgUrl: String? = null,
     val channels: List<ChannelWithEpg> = emptyList(),
     val categories: List<String> = listOf("All"),
     val selectedCategory: String = "All",
@@ -35,21 +49,39 @@ data class PlaylistUiState(
     val onlyWithEpg: Boolean = false,
     val onlyLiveNow: Boolean = false,
     val sortBy: ChannelSortOrder = ChannelSortOrder.DEFAULT,
+    val contentType: ContentTypeFilter = ContentTypeFilter.ALL,
+    val viewMode: ViewMode = ViewMode.LIST,
+    val favoriteIds: Set<String> = emptySet(),
+    val recentChannels: List<M3uItem> = emptyList(),
     val epgData: EpgData? = null,
     val epgMatcher: EpgMatcher? = null
 ) {
     val filteredChannels: List<ChannelWithEpg>
         get() {
             var list = channels
+
+            // Filter by Content Type (Live TV vs VOD vs Favorites)
+            when (contentType) {
+                ContentTypeFilter.ALL -> {}
+                ContentTypeFilter.LIVE_TV -> list = list.filter { !it.channel.isVod }
+                ContentTypeFilter.VOD -> list = list.filter { it.channel.isVod }
+                ContentTypeFilter.FAVORITES -> list = list.filter { favoriteIds.contains(it.channel.id) }
+            }
+
+            // Filter by Category
             if (selectedCategory != "All") {
                 list = list.filter { it.channel.group.equals(selectedCategory, ignoreCase = true) }
             }
+
+            // Toggles
             if (onlyWithEpg) {
                 list = list.filter { it.currentProgramme != null || it.nextProgramme != null }
             }
             if (onlyLiveNow) {
                 list = list.filter { it.currentProgramme != null }
             }
+
+            // Search query
             if (searchQuery.isNotBlank()) {
                 val query = searchQuery.trim().lowercase()
                 list = list.filter {
@@ -57,6 +89,8 @@ data class PlaylistUiState(
                             (it.currentProgramme?.title?.lowercase()?.contains(query) == true)
                 }
             }
+
+            // Sorting
             return when (sortBy) {
                 ChannelSortOrder.DEFAULT -> list
                 ChannelSortOrder.NAME_ASC -> list.sortedBy { it.channel.name.lowercase() }
@@ -88,6 +122,8 @@ class PlaylistViewModel(
                 isLoading = false,
                 error = null,
                 playlist = samplePlaylist,
+                currentUrl = null,
+                currentEpgUrl = null,
                 channels = enriched,
                 categories = cats.distinct(),
                 selectedCategory = "All",
@@ -99,7 +135,7 @@ class PlaylistViewModel(
 
     fun loadPlaylist(url: String, explicitEpgUrl: String? = null) {
         viewModelScope.launch {
-            _uiState.update { it.copy(isLoading = true, error = null) }
+            _uiState.update { it.copy(isLoading = true, error = null, currentUrl = url, currentEpgUrl = explicitEpgUrl) }
             val result = playlistRepository.loadPlaylistFromUrl(url)
             result.onSuccess { playlist ->
                 val cats = mutableListOf("All")
@@ -135,6 +171,16 @@ class PlaylistViewModel(
         }
     }
 
+    fun reloadCurrentPlaylist() {
+        val currentUrl = _uiState.value.currentUrl
+        val currentEpg = _uiState.value.currentEpgUrl
+        if (currentUrl != null) {
+            loadPlaylist(currentUrl, currentEpg)
+        } else {
+            loadSampleData()
+        }
+    }
+
     fun loadEpg(epgUrl: String) {
         viewModelScope.launch {
             val result = epgRepository.loadEpgFromUrl(epgUrl)
@@ -165,6 +211,40 @@ class PlaylistViewModel(
         _uiState.update { it.copy(searchQuery = query) }
     }
 
+    fun setContentType(type: ContentTypeFilter) {
+        _uiState.update { it.copy(contentType = type) }
+    }
+
+    fun toggleViewMode() {
+        _uiState.update {
+            it.copy(viewMode = if (it.viewMode == ViewMode.LIST) ViewMode.GRID else ViewMode.LIST)
+        }
+    }
+
+    fun toggleFavorite(channelId: String) {
+        _uiState.update { current ->
+            val set = current.favoriteIds.toMutableSet()
+            if (set.contains(channelId)) {
+                set.remove(channelId)
+            } else {
+                set.add(channelId)
+            }
+            current.copy(favoriteIds = set)
+        }
+    }
+
+    fun isFavorite(channelId: String): Boolean {
+        return _uiState.value.favoriteIds.contains(channelId)
+    }
+
+    fun addRecentChannel(channel: M3uItem) {
+        _uiState.update { current ->
+            val existing = current.recentChannels.filterNot { it.id == channel.id }.toMutableList()
+            existing.add(0, channel) // Push to top
+            current.copy(recentChannels = existing.take(12))
+        }
+    }
+
     fun setFilterOptions(
         category: String? = null,
         onlyWithEpg: Boolean? = null,
@@ -188,6 +268,7 @@ class PlaylistViewModel(
                 onlyWithEpg = false,
                 onlyLiveNow = false,
                 sortBy = ChannelSortOrder.DEFAULT,
+                contentType = ContentTypeFilter.ALL,
                 searchQuery = ""
             )
         }
@@ -195,7 +276,8 @@ class PlaylistViewModel(
 
     fun hasActiveFilters(): Boolean {
         val s = _uiState.value
-        return s.selectedCategory != "All" || s.onlyWithEpg || s.onlyLiveNow || s.sortBy != ChannelSortOrder.DEFAULT
+        return s.selectedCategory != "All" || s.onlyWithEpg || s.onlyLiveNow ||
+                s.sortBy != ChannelSortOrder.DEFAULT || s.contentType != ContentTypeFilter.ALL
     }
 
     fun getCategoryCounts(): Map<String, Int> {

@@ -100,4 +100,86 @@ class PlayerViewModelTest {
         vm.setError("Stream connection failed")
         assertEquals("Stream connection failed", vm.uiState.value.errorMessage)
     }
+
+    @Test
+    fun testStreamInfo_update() {
+        val vm = PlayerViewModel()
+        val info = StreamInfo(
+            resolution = "1920x1080 (Full HD)",
+            bitrate = "4.5 Mbps",
+            videoCodec = "H.264 / AVC",
+            audioCodec = "AAC-LC",
+            frameRate = "60 fps",
+            streamFormat = "HLS (.m3u8)",
+            streamUrl = "https://stream.com/live.m3u8",
+            bufferPercentage = 85
+        )
+        vm.updateStreamInfo(info)
+
+        assertEquals("1920x1080 (Full HD)", vm.uiState.value.streamInfo.resolution)
+        assertEquals("4.5 Mbps", vm.uiState.value.streamInfo.bitrate)
+        assertEquals(85, vm.uiState.value.streamInfo.bufferPercentage)
+    }
+
+    @Test
+    fun testToggleLock() {
+        val vm = PlayerViewModel()
+        assertFalse(vm.uiState.value.isLocked)
+
+        vm.toggleLock()
+        assertTrue(vm.uiState.value.isLocked)
+
+        vm.toggleLock()
+        assertFalse(vm.uiState.value.isLocked)
+    }
+
+    @Test
+    fun testToggleMute() {
+        val vm = PlayerViewModel()
+        assertFalse(vm.uiState.value.isMuted)
+
+        vm.toggleMute()
+        assertTrue(vm.uiState.value.isMuted)
+
+        vm.toggleMute()
+        assertFalse(vm.uiState.value.isMuted)
+    }
+
+    @Test
+    fun testPlaybackSpeed() {
+        val vm = PlayerViewModel()
+        assertEquals(1.0f, vm.uiState.value.playbackSpeed, 0.01f)
+
+        vm.setPlaybackSpeed(1.5f)
+        assertEquals(1.5f, vm.uiState.value.playbackSpeed, 0.01f)
+    }
+
+    @Test
+    fun testSleepTimer() {
+        val vm = PlayerViewModel()
+        assertEquals(null, vm.uiState.value.sleepTimerMinutesRemaining)
+
+        vm.setSleepTimer(30)
+        assertEquals(30, vm.uiState.value.sleepTimerMinutesRemaining)
+
+        vm.cancelSleepTimer()
+        assertEquals(null, vm.uiState.value.sleepTimerMinutesRemaining)
+    }
+
+    @Test
+    fun testDialogVisibilities() {
+        val vm = PlayerViewModel()
+        assertFalse(vm.uiState.value.isStreamInfoDialogVisible)
+        assertFalse(vm.uiState.value.isEpgSheetVisible)
+        assertFalse(vm.uiState.value.isChannelSelectorVisible)
+
+        vm.setStreamInfoDialogVisible(true)
+        assertTrue(vm.uiState.value.isStreamInfoDialogVisible)
+
+        vm.setEpgSheetVisible(true)
+        assertTrue(vm.uiState.value.isEpgSheetVisible)
+
+        vm.setChannelSelectorVisible(true)
+        assertTrue(vm.uiState.value.isChannelSelectorVisible)
+    }
 }

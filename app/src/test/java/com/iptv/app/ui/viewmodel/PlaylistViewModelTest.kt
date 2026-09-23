@@ -178,4 +178,89 @@ class PlaylistViewModelTest {
         assertFalse(viewModel.uiState.value.onlyWithEpg)
         assertEquals(ChannelSortOrder.DEFAULT, viewModel.uiState.value.sortBy)
     }
+
+    @Test
+    fun testFavorites_toggleAndFilter() {
+        val fakeClient = FakeNetworkClient()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher)
+        )
+        viewModel.loadSampleData()
+
+        val channel = viewModel.uiState.value.channels.first().channel
+        assertFalse(viewModel.isFavorite(channel.id))
+
+        // Toggle to add
+        viewModel.toggleFavorite(channel.id)
+        assertTrue(viewModel.isFavorite(channel.id))
+
+        // Filter by Favorites
+        viewModel.setContentType(ContentTypeFilter.FAVORITES)
+        val favorites = viewModel.uiState.value.filteredChannels
+        assertEquals(1, favorites.size)
+        assertEquals(channel.id, favorites[0].channel.id)
+
+        // Toggle to remove
+        viewModel.toggleFavorite(channel.id)
+        assertFalse(viewModel.isFavorite(channel.id))
+        assertTrue(viewModel.uiState.value.filteredChannels.isEmpty())
+    }
+
+    @Test
+    fun testContentTypeFilter_LiveVsVod() {
+        val fakeClient = FakeNetworkClient()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher)
+        )
+        viewModel.loadSampleData()
+
+        viewModel.setContentType(ContentTypeFilter.VOD)
+        val vodList = viewModel.uiState.value.filteredChannels
+        assertTrue(vodList.isNotEmpty())
+        assertTrue(vodList.all { it.channel.isVod })
+
+        viewModel.setContentType(ContentTypeFilter.LIVE_TV)
+        val liveList = viewModel.uiState.value.filteredChannels
+        assertTrue(liveList.isNotEmpty())
+        assertTrue(liveList.all { !it.channel.isVod })
+    }
+
+    @Test
+    fun testRecentChannels() {
+        val fakeClient = FakeNetworkClient()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher)
+        )
+        viewModel.loadSampleData()
+
+        val ch1 = viewModel.uiState.value.channels[0].channel
+        val ch2 = viewModel.uiState.value.channels[1].channel
+
+        viewModel.addRecentChannel(ch1)
+        viewModel.addRecentChannel(ch2)
+
+        val recents = viewModel.uiState.value.recentChannels
+        assertEquals(2, recents.size)
+        assertEquals(ch2.id, recents[0].id) // Most recent first
+        assertEquals(ch1.id, recents[1].id)
+    }
+
+    @Test
+    fun testViewModeToggle() {
+        val fakeClient = FakeNetworkClient()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher)
+        )
+        assertEquals(ViewMode.LIST, viewModel.uiState.value.viewMode)
+
+        viewModel.toggleViewMode()
+        assertEquals(ViewMode.GRID, viewModel.uiState.value.viewMode)
+
+        viewModel.toggleViewMode()
+        assertEquals(ViewMode.LIST, viewModel.uiState.value.viewMode)
+    }
 }
