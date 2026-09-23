@@ -210,10 +210,12 @@ fun PlayerScreen(
                         .align(Alignment.TopCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Black.copy(alpha = 0.8f), Color.Transparent)
+                                colors = listOf(Color.Black.copy(alpha = 0.85f), Color.Transparent)
                             )
                         )
-                        .padding(horizontal = 16.dp, vertical = 24.dp),
+                        .statusBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(onClick = onBack) {
@@ -330,10 +332,12 @@ fun PlayerScreen(
                         .align(Alignment.BottomCenter)
                         .background(
                             Brush.verticalGradient(
-                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.9f))
+                                colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.92f))
                             )
                         )
-                        .padding(horizontal = 24.dp, vertical = 20.dp)
+                        .navigationBarsPadding()
+                        .displayCutoutPadding()
+                        .padding(horizontal = 24.dp, vertical = 12.dp)
                 ) {
                     if (currentProg != null) {
                         Text(

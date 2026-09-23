@@ -46,15 +46,21 @@ fun ChannelFilterDialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false)
     ) {
-        Card(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        Box(
             modifier = Modifier
-                .fillMaxWidth(0.92f)
-                .fillMaxHeight(0.85f)
-                .padding(vertical = 16.dp)
+                .fillMaxSize()
+                .safeDrawingPadding()
+                .padding(16.dp),
+            contentAlignment = Alignment.Center
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
+            Card(
+                shape = RoundedCornerShape(24.dp),
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight()
+            ) {
+                Column(modifier = Modifier.fillMaxSize()) {
                 // Dialog Header
                 Row(
                     modifier = Modifier
@@ -269,4 +275,5 @@ fun ChannelFilterDialog(
             }
         }
     }
+}
 }

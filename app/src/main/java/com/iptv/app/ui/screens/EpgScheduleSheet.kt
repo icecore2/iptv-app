@@ -44,6 +44,7 @@ fun EpgScheduleSheet(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                .navigationBarsPadding()
                 .padding(horizontal = 20.dp, vertical = 8.dp)
         ) {
             // Header

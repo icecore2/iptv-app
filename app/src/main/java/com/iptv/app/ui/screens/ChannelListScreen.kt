@@ -98,11 +98,13 @@ fun ChannelListScreen(
                         Icon(Icons.Default.FolderOpen, contentDescription = "Change Playlist")
                     }
                 },
+                windowInsets = TopAppBarDefaults.windowInsets,
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.surface
                 )
             )
-        }
+        },
+        contentWindowInsets = ScaffoldDefaults.contentWindowInsets
     ) { padding ->
         Column(
             modifier = Modifier
@@ -178,7 +180,7 @@ fun ChannelListScreen(
                 }
 
                 LazyColumn(
-                    contentPadding = PaddingValues(16.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 48.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(uiState.filteredChannels, key = { it.channel.id + it.channel.streamUrl }) { item ->
