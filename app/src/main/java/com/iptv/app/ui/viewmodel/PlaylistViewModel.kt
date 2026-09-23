@@ -17,6 +17,13 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
+enum class ChannelSortOrder(val label: String) {
+    DEFAULT("Default Playlist Order"),
+    NAME_ASC("Name: A to Z"),
+    NAME_DESC("Name: Z to A"),
+    GROUP("Group / Category")
+}
+
 data class PlaylistUiState(
     val isLoading: Boolean = false,
     val error: String? = null,
@@ -25,6 +32,9 @@ data class PlaylistUiState(
     val categories: List<String> = listOf("All"),
     val selectedCategory: String = "All",
     val searchQuery: String = "",
+    val onlyWithEpg: Boolean = false,
+    val onlyLiveNow: Boolean = false,
+    val sortBy: ChannelSortOrder = ChannelSortOrder.DEFAULT,
     val epgData: EpgData? = null,
     val epgMatcher: EpgMatcher? = null
 ) {
@@ -34,6 +44,12 @@ data class PlaylistUiState(
             if (selectedCategory != "All") {
                 list = list.filter { it.channel.group.equals(selectedCategory, ignoreCase = true) }
             }
+            if (onlyWithEpg) {
+                list = list.filter { it.currentProgramme != null || it.nextProgramme != null }
+            }
+            if (onlyLiveNow) {
+                list = list.filter { it.currentProgramme != null }
+            }
             if (searchQuery.isNotBlank()) {
                 val query = searchQuery.trim().lowercase()
                 list = list.filter {
@@ -41,7 +57,12 @@ data class PlaylistUiState(
                             (it.currentProgramme?.title?.lowercase()?.contains(query) == true)
                 }
             }
-            return list
+            return when (sortBy) {
+                ChannelSortOrder.DEFAULT -> list
+                ChannelSortOrder.NAME_ASC -> list.sortedBy { it.channel.name.lowercase() }
+                ChannelSortOrder.NAME_DESC -> list.sortedByDescending { it.channel.name.lowercase() }
+                ChannelSortOrder.GROUP -> list.sortedWith(compareBy({ it.channel.group.lowercase() }, { it.channel.name.lowercase() }))
+            }
         }
 }
 
@@ -84,7 +105,6 @@ class PlaylistViewModel(
                 val cats = mutableListOf("All")
                 cats.addAll(playlist.groups)
 
-                // Match with existing EPG or prepare plain channels
                 val currentMatcher = _uiState.value.epgMatcher
                 val enriched = playlist.items.map {
                     currentMatcher?.enrichChannel(it) ?: ChannelWithEpg(channel = it)
@@ -100,7 +120,6 @@ class PlaylistViewModel(
                     )
                 }
 
-                // If EPG URL provided or discovered in M3U header, auto-load EPG
                 val targetEpgUrl = explicitEpgUrl ?: playlist.epgUrl
                 if (!targetEpgUrl.isNullOrBlank()) {
                     loadEpg(targetEpgUrl)
@@ -132,8 +151,8 @@ class PlaylistViewModel(
                         channels = enriched
                     )
                 }
-            }.onFailure { err ->
-                // Keep channels intact, but note EPG failure if needed
+            }.onFailure { _ ->
+                // Keep channels intact on EPG failure
             }
         }
     }
@@ -144,6 +163,50 @@ class PlaylistViewModel(
 
     fun updateSearchQuery(query: String) {
         _uiState.update { it.copy(searchQuery = query) }
+    }
+
+    fun setFilterOptions(
+        category: String? = null,
+        onlyWithEpg: Boolean? = null,
+        onlyLiveNow: Boolean? = null,
+        sortBy: ChannelSortOrder? = null
+    ) {
+        _uiState.update { current ->
+            current.copy(
+                selectedCategory = category ?: current.selectedCategory,
+                onlyWithEpg = onlyWithEpg ?: current.onlyWithEpg,
+                onlyLiveNow = onlyLiveNow ?: current.onlyLiveNow,
+                sortBy = sortBy ?: current.sortBy
+            )
+        }
+    }
+
+    fun resetFilters() {
+        _uiState.update {
+            it.copy(
+                selectedCategory = "All",
+                onlyWithEpg = false,
+                onlyLiveNow = false,
+                sortBy = ChannelSortOrder.DEFAULT,
+                searchQuery = ""
+            )
+        }
+    }
+
+    fun hasActiveFilters(): Boolean {
+        val s = _uiState.value
+        return s.selectedCategory != "All" || s.onlyWithEpg || s.onlyLiveNow || s.sortBy != ChannelSortOrder.DEFAULT
+    }
+
+    fun getCategoryCounts(): Map<String, Int> {
+        val channels = _uiState.value.channels
+        val counts = mutableMapOf<String, Int>()
+        counts["All"] = channels.size
+        for (item in channels) {
+            val group = item.channel.group
+            counts[group] = (counts[group] ?: 0) + 1
+        }
+        return counts
     }
 
     fun getChannelSchedule(channel: M3uItem): List<EpgProgramme> {

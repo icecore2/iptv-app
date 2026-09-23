@@ -8,6 +8,7 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -35,6 +36,7 @@ fun ChannelListScreen(
     val uiState by viewModel.uiState.collectAsState()
     var isSearchActive by remember { mutableStateOf(false) }
     var selectedChannelForEpg by remember { mutableStateOf<ChannelWithEpg?>(null) }
+    var showFilterDialog by remember { mutableStateOf(false) }
 
     Scaffold(
         topBar = {
@@ -58,7 +60,7 @@ fun ChannelListScreen(
                         Column {
                             Text("IPTV Channels", fontWeight = FontWeight.Bold)
                             Text(
-                                "${uiState.filteredChannels.size} channels available",
+                                "${uiState.filteredChannels.size} of ${uiState.channels.size} channels",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -75,8 +77,25 @@ fun ChannelListScreen(
                             contentDescription = "Search"
                         )
                     }
+
+                    // Filter Action Button with badge
+                    IconButton(onClick = { showFilterDialog = true }) {
+                        BadgedBox(
+                            badge = {
+                                if (viewModel.hasActiveFilters()) {
+                                    Badge(containerColor = MaterialTheme.colorScheme.secondary) {
+                                        Text("!")
+                                    }
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.FilterList, contentDescription = "Filter Channels")
+                        }
+                    }
+
+                    // Change / Load Playlist Action Button
                     IconButton(onClick = onChangePlaylist) {
-                        Icon(Icons.Default.Tune, contentDescription = "Change Playlist")
+                        Icon(Icons.Default.FolderOpen, contentDescription = "Change Playlist")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -90,23 +109,43 @@ fun ChannelListScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Category Chips Row
-            if (uiState.categories.size > 1) {
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    items(uiState.categories) { category ->
-                        FilterChip(
-                            selected = uiState.selectedCategory.equals(category, ignoreCase = true),
-                            onClick = { viewModel.selectCategory(category) },
-                            label = { Text(category) },
-                            colors = FilterChipDefaults.filterChipColors(
-                                selectedContainerColor = MaterialTheme.colorScheme.primary,
-                                selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+            // Category Chips Row with leading Filters button
+            LazyRow(
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // Filter Dialog trigger chip
+                item {
+                    FilterChip(
+                        selected = viewModel.hasActiveFilters(),
+                        onClick = { showFilterDialog = true },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = "Open Filters",
+                                modifier = Modifier.size(16.dp)
                             )
+                        },
+                        label = { Text("Filters") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
                         )
-                    }
+                    )
+                }
+
+                // Category items
+                items(uiState.categories) { category ->
+                    FilterChip(
+                        selected = uiState.selectedCategory.equals(category, ignoreCase = true),
+                        onClick = { viewModel.selectCategory(category) },
+                        label = { Text(category) },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.primary,
+                            selectedLabelColor = MaterialTheme.colorScheme.onPrimary
+                        )
+                    )
                 }
             }
 
@@ -116,10 +155,22 @@ fun ChannelListScreen(
                     modifier = Modifier.fillMaxSize(),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = if (uiState.searchQuery.isNotBlank()) "No channels matching '${uiState.searchQuery}'" else "No channels found.",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = if (uiState.searchQuery.isNotBlank()) "No channels matching '${uiState.searchQuery}'" else "No channels match current filters.",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        if (viewModel.hasActiveFilters()) {
+                            TextButton(onClick = { viewModel.resetFilters() }) {
+                                Icon(Icons.Default.RestartAlt, contentDescription = null)
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Reset Filters")
+                            }
+                        }
+                    }
                 }
             } else {
                 val rawChannels = remember(uiState.filteredChannels) {
@@ -142,6 +193,15 @@ fun ChannelListScreen(
         }
     }
 
+    // Interactive Filter Dialog
+    if (showFilterDialog) {
+        ChannelFilterDialog(
+            viewModel = viewModel,
+            onDismiss = { showFilterDialog = false }
+        )
+    }
+
+    // EPG Schedule Bottom Sheet
     selectedChannelForEpg?.let { channelItem ->
         val schedule = viewModel.getChannelSchedule(channelItem.channel)
         EpgScheduleSheet(
@@ -269,7 +329,7 @@ fun ChannelCard(
                 // Guide button
                 IconButton(onClick = onEpgClick) {
                     Icon(
-                        imageVector = Icons.Default.EventNote,
+                        imageVector = Icons.Default.CalendarMonth,
                         contentDescription = "EPG Schedule",
                         tint = MaterialTheme.colorScheme.secondary
                     )
