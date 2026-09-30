@@ -2,8 +2,10 @@ package com.iptv.app.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.iptv.app.core.matcher.CatchupResolver
 import com.iptv.app.core.matcher.EpgMatcher
 import com.iptv.app.core.model.ChannelWithEpg
+import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.core.model.M3uItem
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -33,6 +35,10 @@ data class StreamInfo(
 data class PlayerUiState(
     val currentChannel: M3uItem? = null,
     val currentEpg: ChannelWithEpg? = null,
+    val activeProgramme: EpgProgramme? = null,
+    val isVodPlayback: Boolean = false,
+    val vodProgressMs: Long = 0L,
+    val vodDurationMs: Long = 0L,
     val channelList: List<M3uItem> = emptyList(),
     val matcher: EpgMatcher? = null,
     val isPlaying: Boolean = false,
@@ -49,8 +55,25 @@ data class PlayerUiState(
     val isEpgSheetVisible: Boolean = false,
     val isChannelSelectorVisible: Boolean = false,
     val isSpeedDialogVisible: Boolean = false,
-    val isSleepTimerDialogVisible: Boolean = false
-)
+    val isSleepTimerDialogVisible: Boolean = false,
+    val originalChannel: M3uItem? = null,
+
+    // Time-Shift Replay Buffer for Live Streams
+    val liveSessionStartTimeMs: Long = 0L,
+    val liveSessionDurationMs: Long = 0L,
+    val livePositionFromStartMs: Long = 0L,
+    val isAtLiveEdge: Boolean = true,
+    val timeShiftOffsetMs: Long = 0L,
+    val canGoBackToStart: Boolean = false,
+
+    // EPG Schedule for timeline programme markers and scrubber tooltip
+    val currentSchedule: List<EpgProgramme> = emptyList()
+) {
+    val hasAnyDialogOpen: Boolean
+        get() = isStreamInfoDialogVisible || isEpgSheetVisible ||
+                isChannelSelectorVisible || isSpeedDialogVisible ||
+                isSleepTimerDialogVisible
+}
 
 class PlayerViewModel : ViewModel() {
 
@@ -74,14 +97,139 @@ class PlayerViewModel : ViewModel() {
             it.copy(
                 currentChannel = channel,
                 currentEpg = enriched,
+                activeProgramme = enriched.currentProgramme,
+                isVodPlayback = channel.isVod,
+                vodProgressMs = 0L,
+                vodDurationMs = 0L,
+                liveSessionStartTimeMs = System.currentTimeMillis(),
+                liveSessionDurationMs = 0L,
+                livePositionFromStartMs = 0L,
+                isAtLiveEdge = true,
+                timeShiftOffsetMs = 0L,
+                canGoBackToStart = false,
+                currentSchedule = matcher?.getSchedule(channel) ?: emptyList(),
                 channelList = playlist,
                 matcher = matcher,
                 errorMessage = null,
                 isBuffering = true,
+                originalChannel = null,
                 streamInfo = StreamInfo(
                     streamFormat = format,
                     streamUrl = channel.streamUrl
                 )
+            )
+        }
+    }
+
+    fun playProgrammeVod(
+        programme: EpgProgramme,
+        channel: M3uItem,
+        playlist: List<M3uItem> = emptyList(),
+        matcher: EpgMatcher? = null
+    ) {
+        val vodUrl = CatchupResolver.buildVodUrl(channel, programme)
+        val vodItem = M3uItem(
+            id = "${channel.id}_vod_${programme.startEpochMillis}",
+            name = programme.title,
+            streamUrl = vodUrl,
+            group = "${channel.name} • VOD Catchup",
+            logoUrl = programme.iconUrl ?: channel.logoUrl,
+            tvgId = channel.tvgId,
+            tvgName = channel.tvgName,
+            headers = channel.headers,
+            isRadio = false,
+            isCatchup = true
+        )
+        val durationMs = (programme.stopEpochMillis - programme.startEpochMillis).coerceAtLeast(0L)
+        val enriched = ChannelWithEpg(
+            channel = vodItem,
+            currentProgramme = programme
+        )
+        val format = when {
+            vodUrl.endsWith(".m3u8", ignoreCase = true) -> "HLS Catchup (.m3u8)"
+            vodUrl.endsWith(".mp4", ignoreCase = true) -> "MP4 Video"
+            vodUrl.endsWith(".mkv", ignoreCase = true) -> "MKV Video"
+            vodUrl.endsWith(".ts", ignoreCase = true) -> "MPEG-TS Catchup (.ts)"
+            else -> "VOD Stream (Catchup Archive)"
+        }
+
+        _uiState.update {
+            it.copy(
+                currentChannel = vodItem,
+                currentEpg = enriched,
+                activeProgramme = programme,
+                isVodPlayback = true,
+                vodProgressMs = 0L,
+                vodDurationMs = durationMs,
+                liveSessionStartTimeMs = 0L,
+                liveSessionDurationMs = 0L,
+                livePositionFromStartMs = 0L,
+                isAtLiveEdge = true,
+                timeShiftOffsetMs = 0L,
+                canGoBackToStart = false,
+                currentSchedule = matcher?.getSchedule(channel) ?: emptyList(),
+                channelList = playlist,
+                matcher = matcher,
+                errorMessage = null,
+                isBuffering = true,
+                originalChannel = channel,
+                streamInfo = StreamInfo(
+                    streamFormat = format,
+                    streamUrl = vodUrl
+                )
+            )
+        }
+    }
+
+    private var lastMatchedProgramme: EpgProgramme? = null
+
+    fun getProgrammeAtTime(epochMillis: Long): EpgProgramme? {
+        val cached = lastMatchedProgramme
+        if (cached != null && epochMillis in cached.startEpochMillis until cached.stopEpochMillis) {
+            return cached
+        }
+        val match = _uiState.value.currentSchedule.firstOrNull { prog ->
+            epochMillis in prog.startEpochMillis until prog.stopEpochMillis
+        }
+        lastMatchedProgramme = match
+        return match
+    }
+
+    fun updateVodProgress(currentPosMs: Long, durationMs: Long) {
+        _uiState.update {
+            it.copy(
+                vodProgressMs = currentPosMs,
+                vodDurationMs = if (durationMs > 0) durationMs else it.vodDurationMs
+            )
+        }
+    }
+
+    fun updateLiveBufferProgress(sessionDurationMs: Long, positionFromStartMs: Long) {
+        val safeSessionDur = sessionDurationMs.coerceAtLeast(0L)
+        val safePos = positionFromStartMs.coerceIn(0L, safeSessionDur)
+        val offset = (safeSessionDur - safePos).coerceAtLeast(0L)
+        val atLive = offset <= 3000L
+
+        _uiState.update {
+            it.copy(
+                liveSessionDurationMs = safeSessionDur,
+                livePositionFromStartMs = safePos,
+                timeShiftOffsetMs = offset,
+                isAtLiveEdge = atLive,
+                canGoBackToStart = safeSessionDur >= 5000L
+            )
+        }
+    }
+
+    fun resetLiveBuffer() {
+        _uiState.update {
+            it.copy(
+                liveSessionStartTimeMs = System.currentTimeMillis(),
+                liveSessionDurationMs = 0L,
+                livePositionFromStartMs = 0L,
+                timeShiftOffsetMs = 0L,
+                isAtLiveEdge = true,
+                canGoBackToStart = false
             )
         }
     }
@@ -115,6 +263,10 @@ class PlayerViewModel : ViewModel() {
             }
             it.copy(aspectRatioMode = nextMode)
         }
+    }
+
+    fun setAspectRatioMode(mode: AspectRatioMode) {
+        _uiState.update { it.copy(aspectRatioMode = mode) }
     }
 
     fun setPlaying(playing: Boolean) {

@@ -205,7 +205,7 @@ fun ChannelFilterDialog(
                             color = MaterialTheme.colorScheme.primary
                         )
 
-                        for (order in ChannelSortOrder.values()) {
+                        for (order in ChannelSortOrder.entries) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()

@@ -33,6 +33,9 @@ class M3uParser {
         var currentGroup: String? = null
         var currentName: String? = null
         var currentIsRadio = false
+        var currentCatchup: String? = null
+        var currentCatchupSource: String? = null
+        var currentCatchupDays: Int? = null
         val currentHeaders = mutableMapOf<String, String>()
         var hasPendingItem = false
 
@@ -62,6 +65,10 @@ class M3uParser {
                     currentTvgLogo = attrs["tvg-logo"]
                     currentGroup = attrs["group-title"]
                     currentIsRadio = attrs["radio"]?.equals("true", ignoreCase = true) == true
+                    currentCatchup = attrs["catchup"] ?: attrs["catchup-type"] ?: headerAttributes["catchup"] ?: headerAttributes["catchup-type"]
+                    currentCatchupSource = attrs["catchup-source"] ?: headerAttributes["catchup-source"]
+                    val rawDays = attrs["catchup-days"] ?: headerAttributes["catchup-days"]
+                    currentCatchupDays = rawDays?.toIntOrNull()
 
                     currentName = when {
                         titlePart.isNotEmpty() -> titlePart
@@ -88,7 +95,10 @@ class M3uParser {
                             tvgId = currentTvgId,
                             tvgName = currentTvgName,
                             headers = HashMap(currentHeaders),
-                            isRadio = currentIsRadio
+                            isRadio = currentIsRadio,
+                            catchup = currentCatchup,
+                            catchupSource = currentCatchupSource,
+                            catchupDays = currentCatchupDays
                         )
                         items.add(item)
                         hasPendingItem = false

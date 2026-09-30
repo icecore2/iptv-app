@@ -4,7 +4,10 @@ import com.iptv.app.core.model.M3uItem
 import com.iptv.app.core.model.M3uPlaylist
 import com.iptv.app.core.parser.M3uParser
 import com.iptv.app.core.parser.XmlTvParser
+import com.iptv.app.core.model.SavedPlaylistPair
+import com.iptv.app.data.DEFAULT_SAMPLE_PAIR
 import com.iptv.app.data.EpgRepository
+import com.iptv.app.data.InMemorySavedPlaylistRepository
 import com.iptv.app.data.NetworkClient
 import com.iptv.app.data.PlaylistRepository
 import kotlinx.coroutines.Dispatchers
@@ -262,5 +265,258 @@ class PlaylistViewModelTest {
 
         viewModel.toggleViewMode()
         assertEquals(ViewMode.LIST, viewModel.uiState.value.viewMode)
+    }
+
+    @Test
+    fun testClearPlaylist_resetsState() {
+        val fakeClient = FakeNetworkClient()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher)
+        )
+        viewModel.loadSampleData()
+
+        // Verify channels are loaded
+        assertTrue(viewModel.uiState.value.channels.isNotEmpty())
+        assertNotNull(viewModel.uiState.value.epgData)
+        assertNotNull(viewModel.uiState.value.epgMatcher)
+
+        // Set some filters to verify they get reset too
+        viewModel.selectCategory("News")
+        viewModel.setFilterOptions(onlyWithEpg = true, sortBy = ChannelSortOrder.NAME_ASC)
+        viewModel.setContentType(ContentTypeFilter.LIVE_TV)
+        viewModel.updateSearchQuery("test")
+
+        // Clear the playlist
+        viewModel.clearPlaylist()
+
+        val state = viewModel.uiState.value
+        assertTrue(state.channels.isEmpty())
+        assertFalse(state.isLoading)
+        assertEquals(null, state.error)
+        assertEquals(null, state.playlist)
+        assertEquals(null, state.currentUrl)
+        assertEquals(null, state.currentEpgUrl)
+        assertEquals(null, state.epgData)
+        assertEquals(null, state.epgMatcher)
+        assertEquals(listOf("All"), state.categories)
+        assertEquals("All", state.selectedCategory)
+        assertEquals("", state.searchQuery)
+        assertFalse(state.onlyWithEpg)
+        assertFalse(state.onlyLiveNow)
+        assertEquals(ChannelSortOrder.DEFAULT, state.sortBy)
+        assertEquals(ContentTypeFilter.ALL, state.contentType)
+    }
+
+    @Test
+    fun testClearPlaylist_preservesFavoritesAndRecents() {
+        val fakeClient = FakeNetworkClient()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher)
+        )
+        viewModel.loadSampleData()
+
+        // Add a favorite and a recent channel
+        val ch1 = viewModel.uiState.value.channels[0].channel
+        val ch2 = viewModel.uiState.value.channels[1].channel
+        viewModel.toggleFavorite(ch1.id)
+        viewModel.addRecentChannel(ch2)
+
+        assertTrue(viewModel.uiState.value.favoriteIds.contains(ch1.id))
+        assertEquals(1, viewModel.uiState.value.recentChannels.size)
+
+        // Clear the playlist
+        viewModel.clearPlaylist()
+
+        // Favorites and recents should be preserved
+        val state = viewModel.uiState.value
+        assertTrue(state.favoriteIds.contains(ch1.id))
+        assertEquals(1, state.recentChannels.size)
+        assertEquals(ch2.id, state.recentChannels[0].id)
+
+        // But channels and EPG should be cleared
+        assertTrue(state.channels.isEmpty())
+        assertEquals(null, state.epgData)
+    }
+
+    @Test
+    fun testLoadSavedPlaylists_hasDefaultDemoPair() = runTest {
+        val fakeClient = FakeNetworkClient()
+        val savedRepo = InMemorySavedPlaylistRepository()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher),
+            savedRepo
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(1, state.savedPlaylists.size)
+        assertEquals("Demo Channels & EPG", state.savedPlaylists.first().name)
+        assertTrue(state.savedPlaylists.first().isSample)
+        assertEquals(DEFAULT_SAMPLE_PAIR.id, state.activePairId)
+    }
+
+    @Test
+    fun testSaveAndSwitchPlaylist_loadsChannelsAndUpdatesActive() = runTest {
+        val m3u = """
+            #EXTM3U
+            #EXTINF:-1 group-title="News",News 24
+            http://stream/news24.m3u8
+        """.trimIndent()
+
+        val fakeClient = FakeNetworkClient(playlistContent = m3u)
+        val savedRepo = InMemorySavedPlaylistRepository()
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher),
+            savedRepo
+        )
+        advanceUntilIdle()
+
+        viewModel.saveAndSwitch(
+            name = "My Custom News",
+            playlistUrl = "http://stream/news.m3u",
+            epgUrl = null
+        )
+        advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals(2, state.savedPlaylists.size)
+        assertEquals("My Custom News", state.activePair?.name)
+        assertEquals(1, state.channels.size)
+        assertEquals("News 24", state.channels[0].channel.name)
+    }
+
+    @Test
+    fun testSwitchToSavedPlaylist_switchesBetweenPairs() = runTest {
+        val m3u = """
+            #EXTM3U
+            #EXTINF:-1 group-title="Sports",Sports HD
+            http://stream/sports.m3u8
+        """.trimIndent()
+
+        val fakeClient = FakeNetworkClient(playlistContent = m3u)
+        val customPair = SavedPlaylistPair(
+            id = "custom_sports",
+            name = "Sports TV",
+            playlistUrl = "http://sports/list.m3u"
+        )
+        val savedRepo = InMemorySavedPlaylistRepository(
+            initialList = listOf(DEFAULT_SAMPLE_PAIR, customPair)
+        )
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher),
+            savedRepo
+        )
+        advanceUntilIdle()
+
+        // Initially switch to custom
+        viewModel.switchToPlaylist(customPair)
+        advanceUntilIdle()
+
+        assertEquals("custom_sports", viewModel.uiState.value.activePairId)
+        assertEquals(1, viewModel.uiState.value.channels.size)
+        assertEquals("Sports HD", viewModel.uiState.value.channels[0].channel.name)
+
+        // Switch back to demo sample
+        viewModel.switchToPlaylist(DEFAULT_SAMPLE_PAIR)
+        advanceUntilIdle()
+
+        assertEquals(DEFAULT_SAMPLE_PAIR.id, viewModel.uiState.value.activePairId)
+        assertTrue(viewModel.uiState.value.channels.size > 1)
+    }
+
+    @Test
+    fun testUpdateSavedPlaylist() = runTest {
+        val fakeClient = FakeNetworkClient()
+        val customPair = SavedPlaylistPair(
+            id = "custom_1",
+            name = "Original Name",
+            playlistUrl = "http://test/list.m3u"
+        )
+        val savedRepo = InMemorySavedPlaylistRepository(
+            initialList = listOf(DEFAULT_SAMPLE_PAIR, customPair)
+        )
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher),
+            savedRepo
+        )
+        advanceUntilIdle()
+
+        viewModel.updatePlaylist(customPair.copy(name = "Renamed Playlist"))
+        advanceUntilIdle()
+
+        val updated = viewModel.uiState.value.savedPlaylists.find { it.id == "custom_1" }
+        assertEquals("Renamed Playlist", updated?.name)
+    }
+
+    @Test
+    fun testDeleteSavedPlaylist_fallsBackToNextOrClears() = runTest {
+        val fakeClient = FakeNetworkClient()
+        val customPair = SavedPlaylistPair(
+            id = "custom_del",
+            name = "Delete Me",
+            playlistUrl = "http://test/list.m3u"
+        )
+        val savedRepo = InMemorySavedPlaylistRepository(
+            initialList = listOf(DEFAULT_SAMPLE_PAIR, customPair)
+        )
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher),
+            savedRepo
+        )
+        advanceUntilIdle()
+
+        // Set as active
+        viewModel.switchToPlaylist(customPair)
+        advanceUntilIdle()
+        assertEquals("custom_del", viewModel.uiState.value.activePairId)
+
+        // Delete active pair
+        viewModel.deletePlaylist("custom_del")
+        advanceUntilIdle()
+
+        // Should fall back to remaining pair (demo)
+        assertEquals(1, viewModel.uiState.value.savedPlaylists.size)
+        assertEquals(DEFAULT_SAMPLE_PAIR.id, viewModel.uiState.value.activePairId)
+    }
+
+    @Test
+    fun testPlaylistScopedFavorites_restoresFavoritesOnSwitch() = runTest {
+        val fakeClient = FakeNetworkClient()
+        val pair1 = SavedPlaylistPair(
+            id = "p1",
+            name = "Pair 1",
+            playlistUrl = "http://p1/list.m3u",
+            favoriteIds = setOf("p1_ch1")
+        )
+        val pair2 = SavedPlaylistPair(
+            id = "p2",
+            name = "Pair 2",
+            playlistUrl = "http://p2/list.m3u",
+            favoriteIds = setOf("p2_chA", "p2_chB")
+        )
+        val savedRepo = InMemorySavedPlaylistRepository(listOf(pair1, pair2))
+        val viewModel = PlaylistViewModel(
+            PlaylistRepository(fakeClient, ioDispatcher = testDispatcher),
+            EpgRepository(fakeClient, ioDispatcher = testDispatcher),
+            savedRepo
+        )
+        advanceUntilIdle()
+
+        // Switch to pair1
+        viewModel.switchToPlaylist(pair1)
+        advanceUntilIdle()
+        assertEquals(setOf("p1_ch1"), viewModel.uiState.value.favoriteIds)
+
+        // Switch to pair2
+        viewModel.switchToPlaylist(pair2)
+        advanceUntilIdle()
+        assertEquals(setOf("p2_chA", "p2_chB"), viewModel.uiState.value.favoriteIds)
     }
 }

@@ -20,7 +20,10 @@ object SampleDataProvider {
                 group = "Science & Tech",
                 logoUrl = "https://upload.wikimedia.org/wikipedia/commons/e/e5/NASA_logo.svg",
                 tvgId = "nasa.tv",
-                tvgName = "NASA TV"
+                tvgName = "NASA TV",
+                catchup = "append",
+                catchupSource = "?utc=${'$'}{start}&lutc=${'$'}{end}",
+                catchupDays = 7
             ),
             M3uItem(
                 id = "dw.news",
@@ -29,7 +32,10 @@ object SampleDataProvider {
                 group = "News",
                 logoUrl = "https://upload.wikimedia.org/wikipedia/commons/7/75/Deutsche_Welle_logo.svg",
                 tvgId = "dw.news",
-                tvgName = "DW English"
+                tvgName = "DW English",
+                catchup = "append",
+                catchupSource = "?utc=${'$'}{start}&lutc=${'$'}{end}",
+                catchupDays = 7
             ),
             M3uItem(
                 id = "france24.en",
@@ -38,7 +44,10 @@ object SampleDataProvider {
                 group = "News",
                 logoUrl = "https://upload.wikimedia.org/wikipedia/commons/8/82/France_24_logo.svg",
                 tvgId = "france24.en",
-                tvgName = "France 24"
+                tvgName = "France 24",
+                catchup = "append",
+                catchupSource = "?utc=${'$'}{start}&lutc=${'$'}{end}",
+                catchupDays = 7
             ),
             M3uItem(
                 id = "redbull.tv",
@@ -47,7 +56,10 @@ object SampleDataProvider {
                 group = "Sports",
                 logoUrl = "https://upload.wikimedia.org/wikipedia/en/f/f5/Red_Bull_TV_logo.png",
                 tvgId = "redbull.tv",
-                tvgName = "Red Bull TV"
+                tvgName = "Red Bull TV",
+                catchup = "append",
+                catchupSource = "?utc=${'$'}{start}&lutc=${'$'}{end}",
+                catchupDays = 7
             ),
             M3uItem(
                 id = "bloomberg.quicktake",
@@ -56,7 +68,10 @@ object SampleDataProvider {
                 group = "News",
                 logoUrl = "https://upload.wikimedia.org/wikipedia/commons/5/52/Bloomberg_Quicktake_logo.svg",
                 tvgId = "bloomberg.quicktake",
-                tvgName = "Bloomberg Quicktake"
+                tvgName = "Bloomberg Quicktake",
+                catchup = "append",
+                catchupSource = "?utc=${'$'}{start}&lutc=${'$'}{end}",
+                catchupDays = 7
             ),
             M3uItem(
                 id = "bigbuckbunny",
@@ -110,7 +125,25 @@ object SampleDataProvider {
         )
 
         val programmes = listOf(
-            // NASA TV
+            // NASA TV (Past Catchup VOD + Live + Upcoming)
+            EpgProgramme(
+                channelId = "nasa.tv",
+                title = "Hubble Space Telescope: Deep Universe",
+                startEpochMillis = now - (oneHour * 3),
+                stopEpochMillis = now - (oneHour * 3 / 2),
+                description = "Spectacular deep space imagery and cosmic discoveries by the Hubble Space Telescope.",
+                category = "Science",
+                iconUrl = "https://images.unsplash.com/photo-1451187580459-43490279c0fa"
+            ),
+            EpgProgramme(
+                channelId = "nasa.tv",
+                title = "Mars Perseverance Rover: Jezero Crater Exploration",
+                startEpochMillis = now - (oneHour * 3 / 2),
+                stopEpochMillis = now - (oneHour / 2),
+                description = "Astrobiologists analyze soil samples and search for past microbial life on the Red Planet.",
+                category = "Science",
+                iconUrl = "https://images.unsplash.com/photo-1614728894747-a83421e2b9c9"
+            ),
             EpgProgramme(
                 channelId = "nasa.tv",
                 title = "ISS Space Station Live Feeds",
@@ -128,7 +161,23 @@ object SampleDataProvider {
                 description = "Deep dive into next-generation lunar exploration technologies.",
                 category = "Science"
             ),
-            // DW News
+            // DW News (Past Catchup VOD + Live + Upcoming)
+            EpgProgramme(
+                channelId = "dw.news",
+                title = "DW Conflict Zone & Geopolitics",
+                startEpochMillis = now - (oneHour * 5 / 2),
+                stopEpochMillis = now - (oneHour * 4 / 3),
+                description = "Tough questions and hard talk on world politics and security challenges.",
+                category = "News"
+            ),
+            EpgProgramme(
+                channelId = "dw.news",
+                title = "Eco Africa: Sustainable Solutions",
+                startEpochMillis = now - (oneHour * 4 / 3),
+                stopEpochMillis = now - (oneHour / 3),
+                description = "Environmental projects and green innovations combating climate change across Africa.",
+                category = "Documentary"
+            ),
             EpgProgramme(
                 channelId = "dw.news",
                 title = "DW News: Global Perspective",
@@ -145,7 +194,15 @@ object SampleDataProvider {
                 description = "Financial and economic stories from emerging markets.",
                 category = "Business"
             ),
-            // France 24
+            // France 24 (Past Catchup VOD + Live + Upcoming)
+            EpgProgramme(
+                channelId = "france24.en",
+                title = "The Paris Global Debate",
+                startEpochMillis = now - (oneHour * 2),
+                stopEpochMillis = now - (oneHour * 3 / 4),
+                description = "Experts dissect major diplomatic summits and international treaties.",
+                category = "Discussion"
+            ),
             EpgProgramme(
                 channelId = "france24.en",
                 title = "Live World News",
@@ -162,7 +219,23 @@ object SampleDataProvider {
                 description = "In-depth investigation of current political and cultural trends across Europe.",
                 category = "Documentary"
             ),
-            // Red Bull TV
+            // Red Bull TV (Past Catchup VOD + Live + Upcoming)
+            EpgProgramme(
+                channelId = "redbull.tv",
+                title = "Red Bull Rampage: Free Ride Legends",
+                startEpochMillis = now - (oneHour * 5 / 2),
+                stopEpochMillis = now - (oneHour * 5 / 4),
+                description = "The world's greatest mountain bike riders conquer treacherous cliffs in Utah.",
+                category = "Sports"
+            ),
+            EpgProgramme(
+                channelId = "redbull.tv",
+                title = "Wingsuit Flying Alps Crossing",
+                startEpochMillis = now - (oneHour * 5 / 4),
+                stopEpochMillis = now - (oneHour / 4),
+                description = "Daredevil pilots fly proximity lines through the jagged peaks of the Swiss Alps.",
+                category = "Sports"
+            ),
             EpgProgramme(
                 channelId = "redbull.tv",
                 title = "Cliff Diving World Series",

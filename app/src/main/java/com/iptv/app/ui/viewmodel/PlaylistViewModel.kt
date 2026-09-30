@@ -8,9 +8,13 @@ import com.iptv.app.core.model.EpgData
 import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.core.model.M3uItem
 import com.iptv.app.core.model.M3uPlaylist
+import com.iptv.app.core.model.SavedPlaylistPair
+import com.iptv.app.data.DEFAULT_SAMPLE_PAIR
 import com.iptv.app.data.EpgRepository
+import com.iptv.app.data.InMemorySavedPlaylistRepository
 import com.iptv.app.data.PlaylistRepository
 import com.iptv.app.data.SampleDataProvider
+import com.iptv.app.data.SavedPlaylistRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -54,8 +58,13 @@ data class PlaylistUiState(
     val favoriteIds: Set<String> = emptySet(),
     val recentChannels: List<M3uItem> = emptyList(),
     val epgData: EpgData? = null,
-    val epgMatcher: EpgMatcher? = null
+    val epgMatcher: EpgMatcher? = null,
+    val savedPlaylists: List<SavedPlaylistPair> = emptyList(),
+    val activePairId: String? = null
 ) {
+    val activePair: SavedPlaylistPair?
+        get() = savedPlaylists.find { it.id == activePairId }
+
     val filteredChannels: List<ChannelWithEpg>
         get() {
             var list = channels
@@ -102,11 +111,114 @@ data class PlaylistUiState(
 
 class PlaylistViewModel(
     private val playlistRepository: PlaylistRepository = PlaylistRepository(),
-    private val epgRepository: EpgRepository = EpgRepository()
+    private val epgRepository: EpgRepository = EpgRepository(),
+    private val savedPlaylistRepository: SavedPlaylistRepository = InMemorySavedPlaylistRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlaylistUiState())
     val uiState: StateFlow<PlaylistUiState> = _uiState.asStateFlow()
+
+    init {
+        loadSavedPlaylists()
+    }
+
+    fun loadSavedPlaylists(autoLoadActive: Boolean = false) {
+        viewModelScope.launch {
+            val list = savedPlaylistRepository.getSavedPlaylists()
+            val activeId = savedPlaylistRepository.getActivePairId()
+            _uiState.update {
+                it.copy(
+                    savedPlaylists = list,
+                    activePairId = activeId ?: it.activePairId
+                )
+            }
+            if (autoLoadActive && activeId != null && _uiState.value.channels.isEmpty()) {
+                list.find { it.id == activeId }?.let { pair ->
+                    switchToPlaylist(pair)
+                }
+            }
+        }
+    }
+
+    fun switchToPlaylist(pair: SavedPlaylistPair) {
+        viewModelScope.launch {
+            savedPlaylistRepository.setActivePairId(pair.id)
+            _uiState.update {
+                it.copy(
+                    activePairId = pair.id,
+                    favoriteIds = pair.favoriteIds
+                )
+            }
+            if (pair.isSample) {
+                loadSampleData()
+            } else {
+                loadPlaylist(pair.playlistUrl, pair.epgUrl)
+            }
+        }
+    }
+
+    fun saveAndSwitch(name: String, playlistUrl: String, epgUrl: String?) {
+        viewModelScope.launch {
+            val newPair = SavedPlaylistPair(
+                name = name.trim(),
+                playlistUrl = playlistUrl.trim(),
+                epgUrl = epgUrl?.trim()?.ifBlank { null }
+            )
+            savedPlaylistRepository.savePlaylist(newPair)
+            val list = savedPlaylistRepository.getSavedPlaylists()
+            _uiState.update { it.copy(savedPlaylists = list) }
+            switchToPlaylist(newPair)
+        }
+    }
+
+    fun savePlaylist(name: String, playlistUrl: String, epgUrl: String?) {
+        viewModelScope.launch {
+            val newPair = SavedPlaylistPair(
+                name = name.trim(),
+                playlistUrl = playlistUrl.trim(),
+                epgUrl = epgUrl?.trim()?.ifBlank { null }
+            )
+            savedPlaylistRepository.savePlaylist(newPair)
+            val list = savedPlaylistRepository.getSavedPlaylists()
+            _uiState.update { it.copy(savedPlaylists = list) }
+        }
+    }
+
+    fun updatePlaylist(pair: SavedPlaylistPair) {
+        viewModelScope.launch {
+            savedPlaylistRepository.updatePlaylist(pair)
+            val list = savedPlaylistRepository.getSavedPlaylists()
+            _uiState.update { it.copy(savedPlaylists = list) }
+
+            // If updating currently active pair, reload if URLs changed
+            val current = _uiState.value
+            if (current.activePairId == pair.id) {
+                if (pair.isSample) {
+                    loadSampleData()
+                } else if (current.currentUrl != pair.playlistUrl || current.currentEpgUrl != pair.epgUrl) {
+                    loadPlaylist(pair.playlistUrl, pair.epgUrl)
+                }
+            }
+        }
+    }
+
+    fun deletePlaylist(id: String) {
+        viewModelScope.launch {
+            savedPlaylistRepository.deletePlaylist(id)
+            val wasActive = _uiState.value.activePairId == id
+            val list = savedPlaylistRepository.getSavedPlaylists()
+            _uiState.update { it.copy(savedPlaylists = list) }
+
+            if (wasActive) {
+                if (list.isNotEmpty()) {
+                    switchToPlaylist(list.first())
+                } else {
+                    clearPlaylist()
+                    _uiState.update { it.copy(activePairId = null) }
+                }
+            }
+        }
+    }
 
     fun loadSampleData() {
         val samplePlaylist = SampleDataProvider.getSamplePlaylist()
@@ -128,7 +240,30 @@ class PlaylistViewModel(
                 categories = cats.distinct(),
                 selectedCategory = "All",
                 epgData = sampleEpg,
-                epgMatcher = matcher
+                epgMatcher = matcher,
+                activePairId = it.activePairId ?: DEFAULT_SAMPLE_PAIR.id
+            )
+        }
+    }
+
+    fun clearPlaylist() {
+        _uiState.update {
+            it.copy(
+                isLoading = false,
+                error = null,
+                playlist = null,
+                currentUrl = null,
+                currentEpgUrl = null,
+                channels = emptyList(),
+                categories = listOf("All"),
+                selectedCategory = "All",
+                searchQuery = "",
+                onlyWithEpg = false,
+                onlyLiveNow = false,
+                sortBy = ChannelSortOrder.DEFAULT,
+                contentType = ContentTypeFilter.ALL,
+                epgData = null,
+                epgMatcher = null
             )
         }
     }
@@ -172,6 +307,12 @@ class PlaylistViewModel(
     }
 
     fun reloadCurrentPlaylist() {
+        val activePair = _uiState.value.activePair
+        if (activePair != null) {
+            switchToPlaylist(activePair)
+            return
+        }
+
         val currentUrl = _uiState.value.currentUrl
         val currentEpg = _uiState.value.currentEpgUrl
         if (currentUrl != null) {
@@ -230,6 +371,20 @@ class PlaylistViewModel(
                 set.add(channelId)
             }
             current.copy(favoriteIds = set)
+        }
+
+        val activeId = _uiState.value.activePairId
+        if (activeId != null) {
+            viewModelScope.launch {
+                val newFavorites = _uiState.value.favoriteIds
+                savedPlaylistRepository.updateFavorites(activeId, newFavorites)
+                _uiState.update { state ->
+                    val updatedList = state.savedPlaylists.map {
+                        if (it.id == activeId) it.copy(favoriteIds = newFavorites) else it
+                    }
+                    state.copy(savedPlaylists = updatedList)
+                }
+            }
         }
     }
 

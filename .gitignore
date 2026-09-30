@@ -10,3 +10,6 @@
 local.properties
 build/
 app/build/
+.kotlin/
+.build/
+.swiftpm/

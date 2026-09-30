@@ -130,4 +130,46 @@ class M3uParserTest {
         assertEquals(channelCount, playlist.items.size)
         assertEquals(listOf("Cinema", "Sports"), playlist.groups.sorted())
     }
+
+    @Test
+    fun testCatchupAttributes_extractsCatchupSourceAndDays() {
+        val content = """
+            #EXTM3U
+            #EXTINF:-1 tvg-id="cnn" catchup="append" catchup-source="?utc=${'$'}{start}&lutc=${'$'}{timestamp}" catchup-days="7",CNN
+            https://stream.cnn.com/live.m3u8
+        """.trimIndent()
+
+        val playlist = parser.parse(content)
+        assertEquals(1, playlist.items.size)
+        val item = playlist.items[0]
+        assertEquals("append", item.catchup)
+        assertEquals("?utc=${'$'}{start}&lutc=${'$'}{timestamp}", item.catchupSource)
+        assertEquals(7, item.catchupDays)
+    }
+
+    @Test
+    fun testHeaderCatchupAttributes_inheritedByItems() {
+        val content = """
+            #EXTM3U catchup="default" catchup-days="3" catchup-source="http://server.com/archive/${'$'}{start}.m3u8"
+            #EXTINF:-1 tvg-id="bbc",BBC One
+            https://stream.bbc.com/live.m3u8
+            #EXTINF:-1 tvg-id="itv" catchup="shift" catchup-days="5",ITV
+            https://stream.itv.com/live.m3u8
+        """.trimIndent()
+
+        val playlist = parser.parse(content)
+        assertEquals(2, playlist.items.size)
+
+        // Item 1 inherits from header
+        val bbc = playlist.items[0]
+        assertEquals("default", bbc.catchup)
+        assertEquals(3, bbc.catchupDays)
+        assertEquals("http://server.com/archive/${'$'}{start}.m3u8", bbc.catchupSource)
+
+        // Item 2 overrides header
+        val itv = playlist.items[1]
+        assertEquals("shift", itv.catchup)
+        assertEquals(5, itv.catchupDays)
+        assertEquals("http://server.com/archive/${'$'}{start}.m3u8", itv.catchupSource)
+    }
 }

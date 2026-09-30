@@ -1,13 +1,16 @@
 package com.iptv.app.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Tv
+import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -19,8 +22,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import com.iptv.app.core.matcher.CatchupResolver
 import com.iptv.app.core.model.ChannelWithEpg
 import com.iptv.app.core.model.EpgProgramme
+import com.iptv.app.core.model.M3uItem
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -30,6 +35,8 @@ import java.time.format.DateTimeFormatter
 fun EpgScheduleSheet(
     channelWithEpg: ChannelWithEpg,
     schedule: List<EpgProgramme>,
+    onPlayProgrammeVod: ((EpgProgramme, M3uItem) -> Unit)? = null,
+    onPlayChannelLive: ((M3uItem) -> Unit)? = null,
     onDismiss: () -> Unit
 ) {
     val channel = channelWithEpg.channel
@@ -101,12 +108,33 @@ fun EpgScheduleSheet(
             }
 
             Spacer(modifier = Modifier.height(16.dp))
-            Text(
-                text = "Program Schedule (EPG)",
-                style = MaterialTheme.typography.titleSmall,
-                color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Program Schedule (EPG)",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+
+                if (CatchupResolver.hasCatchupSupport(channel)) {
+                    Surface(
+                        shape = RoundedCornerShape(6.dp),
+                        color = MaterialTheme.colorScheme.secondaryContainer
+                    ) {
+                        Text(
+                            text = "VOD Catchup Supported",
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                        )
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(8.dp))
 
             if (schedule.isEmpty()) {
@@ -129,6 +157,7 @@ fun EpgScheduleSheet(
                     items(schedule) { programme ->
                         val isLive = programme.isLive(now)
                         val isPast = programme.stopEpochMillis < now
+                        val canPlayVod = onPlayProgrammeVod != null
 
                         val startTime = timeFormatter.format(Instant.ofEpochMilli(programme.startEpochMillis))
                         val stopTime = timeFormatter.format(Instant.ofEpochMilli(programme.stopEpochMillis))
@@ -139,9 +168,22 @@ fun EpgScheduleSheet(
                                 containerColor = if (isLive)
                                     MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.6f)
                                 else
-                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isPast) 0.5f else 0.9f)
+                                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (isPast) 0.85f else 0.55f)
                             ),
-                            modifier = Modifier.fillMaxWidth()
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .then(
+                                    if (canPlayVod) {
+                                        Modifier.clickable {
+                                            if (isLive && onPlayChannelLive != null) {
+                                                onPlayChannelLive(channel)
+                                            } else {
+                                                onPlayProgrammeVod(programme, channel)
+                                            }
+                                            onDismiss()
+                                        }
+                                    } else Modifier
+                                )
                         ) {
                             Column(modifier = Modifier.padding(14.dp)) {
                                 Row(
@@ -156,25 +198,42 @@ fun EpgScheduleSheet(
                                         color = if (isLive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                                     )
 
-                                    if (isLive) {
-                                        Surface(
-                                            color = MaterialTheme.colorScheme.error,
-                                            shape = RoundedCornerShape(4.dp)
-                                        ) {
+                                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                        if (isLive) {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.error,
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ON AIR",
+                                                    color = Color.White,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        } else if (isPast) {
+                                            Surface(
+                                                color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "VOD CATCHUP",
+                                                    color = MaterialTheme.colorScheme.secondary,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                )
+                                            }
+                                        }
+
+                                        if (!programme.category.isNullOrBlank()) {
                                             Text(
-                                                text = "ON AIR",
-                                                color = Color.White,
-                                                fontSize = 10.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp)
+                                                text = programme.category,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                         }
-                                    } else if (!programme.category.isNullOrBlank()) {
-                                        Text(
-                                            text = programme.category,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
                                     }
                                 }
 
@@ -193,6 +252,62 @@ fun EpgScheduleSheet(
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
+                                }
+
+                                if (canPlayVod) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        if (isLive) {
+                                            Button(
+                                                onClick = {
+                                                    if (onPlayChannelLive != null) {
+                                                        onPlayChannelLive(channel)
+                                                    } else {
+                                                        onPlayProgrammeVod(programme, channel)
+                                                    }
+                                                    onDismiss()
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.Tv, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Watch Live", fontSize = 12.sp)
+                                            }
+
+                                            OutlinedButton(
+                                                onClick = {
+                                                    onPlayProgrammeVod(programme, channel)
+                                                    onDismiss()
+                                                },
+                                                modifier = Modifier.weight(1f),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.VideoLibrary, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Play from Start", fontSize = 12.sp)
+                                            }
+                                        } else if (isPast) {
+                                            FilledTonalButton(
+                                                onClick = {
+                                                    onPlayProgrammeVod(programme, channel)
+                                                    onDismiss()
+                                                },
+                                                colors = ButtonDefaults.filledTonalButtonColors(
+                                                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                                                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer
+                                                ),
+                                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                            ) {
+                                                Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Text("Play VOD", fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }

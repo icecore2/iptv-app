@@ -182,4 +182,126 @@ class PlayerViewModelTest {
         vm.setChannelSelectorVisible(true)
         assertTrue(vm.uiState.value.isChannelSelectorVisible)
     }
+
+    @Test
+    fun testPlayProgrammeVod_setsVodPlaybackState() {
+        val vm = PlayerViewModel()
+        val channel = channels[0].copy(catchup = "append")
+        val prog = EpgProgramme(
+            channelId = "ch1",
+            title = "Special Report",
+            startEpochMillis = 1700000000000L,
+            stopEpochMillis = 1700003600000L,
+            description = "Detailed report"
+        )
+
+        vm.playProgrammeVod(prog, channel, channels, matcher)
+
+        val state = vm.uiState.value
+        assertTrue(state.isVodPlayback)
+        assertEquals("Special Report", state.currentChannel?.name)
+        assertTrue(state.currentChannel?.isVod == true)
+        assertEquals(prog, state.activeProgramme)
+        assertTrue(state.currentChannel?.streamUrl?.contains("utc=1700000000") == true)
+        assertEquals(3600000L, state.vodDurationMs)
+        assertEquals(0L, state.vodProgressMs)
+    }
+
+    @Test
+    fun testUpdateVodProgress() {
+        val vm = PlayerViewModel()
+        vm.updateVodProgress(15000L, 60000L)
+
+        assertEquals(15000L, vm.uiState.value.vodProgressMs)
+        assertEquals(60000L, vm.uiState.value.vodDurationMs)
+    }
+
+    @Test
+    fun testLiveBufferProgress_tracksTimeShiftAndLiveEdge() {
+        val vm = PlayerViewModel()
+        vm.playChannel(channels[0], channels, matcher)
+
+        // Initial state
+        assertTrue(vm.uiState.value.isAtLiveEdge)
+        assertFalse(vm.uiState.value.canGoBackToStart)
+        assertEquals(0L, vm.uiState.value.liveSessionDurationMs)
+
+        // User watched 30 seconds, playing at live edge (offset <= 3s)
+        vm.updateLiveBufferProgress(sessionDurationMs = 30000L, positionFromStartMs = 29000L)
+        assertEquals(30000L, vm.uiState.value.liveSessionDurationMs)
+        assertEquals(29000L, vm.uiState.value.livePositionFromStartMs)
+        assertEquals(1000L, vm.uiState.value.timeShiftOffsetMs)
+        assertTrue(vm.uiState.value.isAtLiveEdge)
+        assertTrue(vm.uiState.value.canGoBackToStart)
+
+        // User scrubs back 20 seconds (position is 10s from start)
+        vm.updateLiveBufferProgress(sessionDurationMs = 30000L, positionFromStartMs = 10000L)
+        assertEquals(10000L, vm.uiState.value.livePositionFromStartMs)
+        assertEquals(20000L, vm.uiState.value.timeShiftOffsetMs)
+        assertFalse(vm.uiState.value.isAtLiveEdge) // In time-shift mode!
+        assertTrue(vm.uiState.value.canGoBackToStart)
+
+        // User goes back to starting point (0s)
+        vm.updateLiveBufferProgress(sessionDurationMs = 30000L, positionFromStartMs = 0L)
+        assertEquals(0L, vm.uiState.value.livePositionFromStartMs)
+        assertEquals(30000L, vm.uiState.value.timeShiftOffsetMs)
+        assertFalse(vm.uiState.value.isAtLiveEdge)
+
+        // Reset live buffer
+        vm.resetLiveBuffer()
+        assertEquals(0L, vm.uiState.value.liveSessionDurationMs)
+        assertEquals(0L, vm.uiState.value.livePositionFromStartMs)
+        assertTrue(vm.uiState.value.isAtLiveEdge)
+        assertFalse(vm.uiState.value.canGoBackToStart)
+    }
+
+    @Test
+    fun testCurrentScheduleAndProgrammeLookup() {
+        val vm = PlayerViewModel()
+        vm.playChannel(channels[0], channels, matcher)
+
+        // Verify currentSchedule is populated
+        val schedule = vm.uiState.value.currentSchedule
+        assertEquals(1, schedule.size)
+        assertEquals("Show 1", schedule[0].title)
+
+        // Lookup at timestamp within programme
+        val matchedProg = vm.getProgrammeAtTime(1500L)
+        assertNotNull(matchedProg)
+        assertEquals("Show 1", matchedProg?.title)
+
+        // Lookup at timestamp outside programme
+        val outsideProg = vm.getProgrammeAtTime(5000L)
+        assertEquals(null, outsideProg)
+    }
+
+    @Test
+    fun testGetProgrammeAtTime_cachingBehaviour() {
+        val multiProgData = EpgData(
+            channels = mapOf("ch1" to EpgChannel("ch1", "Channel 1")),
+            programmes = listOf(
+                EpgProgramme("ch1", "Show A", 1000L, 2000L),
+                EpgProgramme("ch1", "Show B", 2000L, 3000L)
+            )
+        )
+        val testMatcher = EpgMatcher(multiProgData)
+        val vm = PlayerViewModel()
+        vm.playChannel(channels[0], channels, testMatcher)
+
+        // First lookup hits Show A
+        val first = vm.getProgrammeAtTime(1200L)
+        assertEquals("Show A", first?.title)
+
+        // Repeated lookups within Show A hit the fast-path cache
+        val second = vm.getProgrammeAtTime(1800L)
+        assertEquals(first, second)
+
+        // Scrubbing forward to Show B transitions the cache
+        val third = vm.getProgrammeAtTime(2500L)
+        assertEquals("Show B", third?.title)
+
+        // Repeated lookups within Show B hit the cache
+        val fourth = vm.getProgrammeAtTime(2900L)
+        assertEquals(third, fourth)
+    }
 }

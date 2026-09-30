@@ -17,6 +17,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -25,23 +26,79 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.runtime.snapshotFlow
+import com.iptv.app.core.model.AppSettings
 import com.iptv.app.core.model.ChannelWithEpg
+import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.core.model.M3uItem
 import com.iptv.app.ui.viewmodel.ContentTypeFilter
 import com.iptv.app.ui.viewmodel.PlaylistViewModel
+import com.iptv.app.ui.viewmodel.SettingsViewModel
 import com.iptv.app.ui.viewmodel.ViewMode
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ChannelListScreen(
     viewModel: PlaylistViewModel,
+    settingsViewModel: SettingsViewModel? = null,
     onChannelSelected: (M3uItem, List<M3uItem>) -> Unit,
-    onChangePlaylist: () -> Unit
+    onOpenEpgGuide: () -> Unit = {},
+    onPlayProgrammeVod: (EpgProgramme, M3uItem) -> Unit = { _, _ -> },
+    onChangePlaylist: () -> Unit,
+    onOpenSettings: () -> Unit = {}
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val settings = settingsViewModel?.settings?.collectAsState()?.value ?: AppSettings()
+
     var isSearchActive by remember { mutableStateOf(false) }
     var selectedChannelForEpg by remember { mutableStateOf<ChannelWithEpg?>(null) }
     var showFilterDialog by remember { mutableStateOf(false) }
+    var showPlaylistSwitcher by remember { mutableStateOf(false) }
+
+    // Pagination state: tracks how many pages of pageSize are loaded
+    var pageCount by remember(uiState.filteredChannels, settings.enablePagination, settings.pageSize) {
+        mutableIntStateOf(1)
+    }
+
+    val displayedChannels = remember(uiState.filteredChannels, pageCount, settings.enablePagination, settings.pageSize) {
+        if (settings.enablePagination) {
+            uiState.filteredChannels.take(pageCount * settings.pageSize)
+        } else {
+            uiState.filteredChannels
+        }
+    }
+
+    val hasMoreToLoad = settings.enablePagination && displayedChannels.size < uiState.filteredChannels.size
+
+    val listState = rememberLazyListState()
+    val gridState = rememberLazyGridState()
+
+    // Infinite scroll lazy load detection for list mode
+    LaunchedEffect(listState, hasMoreToLoad, displayedChannels.size) {
+        snapshotFlow { listState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .collect { lastIndex ->
+                if (lastIndex != null && hasMoreToLoad && lastIndex >= displayedChannels.size - 6) {
+                    pageCount++
+                }
+            }
+    }
+
+    // Infinite scroll lazy load detection for grid mode
+    LaunchedEffect(gridState, hasMoreToLoad, displayedChannels.size) {
+        snapshotFlow { gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index }
+            .collect { lastIndex ->
+                if (lastIndex != null && hasMoreToLoad && lastIndex >= displayedChannels.size - 8) {
+                    pageCount++
+                }
+            }
+    }
+
+    val rawChannels = remember(uiState.filteredChannels) {
+        uiState.filteredChannels.map { it.channel }
+    }
 
     Scaffold(
         topBar = {
@@ -62,12 +119,29 @@ fun ChannelListScreen(
                             modifier = Modifier.fillMaxWidth()
                         )
                     } else {
-                        Column {
-                            Text("IPTV Player", fontWeight = FontWeight.Bold)
+                        Column(
+                            modifier = Modifier.clickable { showPlaylistSwitcher = true }
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text("IPTV Player", fontWeight = FontWeight.Bold)
+                                Icon(
+                                    imageVector = Icons.Default.ArrowDropDown,
+                                    contentDescription = "Switch Playlist",
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+                            val activeName = uiState.activePair?.name ?: "Custom Playlist"
+                            val countText = if (settings.enablePagination && displayedChannels.size < uiState.filteredChannels.size) {
+                                "${displayedChannels.size} of ${uiState.filteredChannels.size} items"
+                            } else {
+                                "${uiState.filteredChannels.size} of ${uiState.channels.size} items"
+                            }
                             Text(
-                                "${uiState.filteredChannels.size} of ${uiState.channels.size} items",
+                                "$activeName • $countText",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -84,10 +158,26 @@ fun ChannelListScreen(
                         )
                     }
 
+                    // Playlist Switcher button
+                    IconButton(onClick = { showPlaylistSwitcher = true }) {
+                        Icon(
+                            imageVector = Icons.Default.SwapHoriz,
+                            contentDescription = "Switch Playlist"
+                        )
+                    }
+
+                    // EPG Programmes Guide
+                    IconButton(onClick = onOpenEpgGuide) {
+                        Icon(
+                            imageVector = Icons.Default.CalendarMonth,
+                            contentDescription = "EPG Programmes Guide"
+                        )
+                    }
+
                     // Grid / List View Mode toggle
                     IconButton(onClick = { viewModel.toggleViewMode() }) {
                         Icon(
-                            imageVector = if (uiState.viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.Default.ViewList,
+                            imageVector = if (uiState.viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.AutoMirrored.Filled.ViewList,
                             contentDescription = "Toggle View Mode"
                         )
                     }
@@ -110,6 +200,11 @@ fun ChannelListScreen(
                     // Quick Refresh / Reload Playlist
                     IconButton(onClick = { viewModel.reloadCurrentPlaylist() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Reload Playlist")
+                    }
+
+                    // Settings Button
+                    IconButton(onClick = onOpenSettings) {
+                        Icon(Icons.Default.Settings, contentDescription = "Settings")
                     }
 
                     // Change / Load Playlist Action Button
@@ -189,10 +284,6 @@ fun ChannelListScreen(
                         )
                     )
                 }
-            }
-
-            val rawChannels = remember(uiState.filteredChannels) {
-                uiState.filteredChannels.map { it.channel }
             }
 
             // Recently Watched Shelf
@@ -290,13 +381,16 @@ fun ChannelListScreen(
                 // View Mode: List View or Grid View
                 if (uiState.viewMode == ViewMode.LIST) {
                     LazyColumn(
+                        state = listState,
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 48.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(uiState.filteredChannels, key = { it.channel.id + it.channel.streamUrl }) { item ->
+                        items(displayedChannels, key = { it.channel.id + it.channel.streamUrl }) { item ->
                             ChannelCard(
                                 channelWithEpg = item,
                                 isFavorite = viewModel.isFavorite(item.channel.id),
+                                showLogo = settings.showChannelLogos,
+                                showEpg = settings.showEpgInList,
                                 onToggleFavorite = { viewModel.toggleFavorite(item.channel.id) },
                                 onClick = {
                                     viewModel.addRecentChannel(item.channel)
@@ -305,19 +399,50 @@ fun ChannelListScreen(
                                 onEpgClick = { selectedChannelForEpg = item }
                             )
                         }
+
+                        if (hasMoreToLoad) {
+                            item {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { pageCount++ }
+                                        .padding(vertical = 6.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = "Loading more channels (${displayedChannels.size} of ${uiState.filteredChannels.size})...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 } else {
                     // Grid View (2 Columns)
                     LazyVerticalGrid(
+                        state = gridState,
                         columns = GridCells.Fixed(2),
                         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 6.dp, bottom = 48.dp),
                         horizontalArrangement = Arrangement.spacedBy(10.dp),
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        items(uiState.filteredChannels, key = { "grid_" + it.channel.id + it.channel.streamUrl }) { item ->
+                        items(displayedChannels, key = { "grid_" + it.channel.id + it.channel.streamUrl }) { item ->
                             ChannelGridCard(
                                 channelWithEpg = item,
                                 isFavorite = viewModel.isFavorite(item.channel.id),
+                                showLogo = settings.showChannelLogos,
+                                showEpg = settings.showEpgInList,
                                 onToggleFavorite = { viewModel.toggleFavorite(item.channel.id) },
                                 onClick = {
                                     viewModel.addRecentChannel(item.channel)
@@ -325,6 +450,34 @@ fun ChannelListScreen(
                                 },
                                 onEpgClick = { selectedChannelForEpg = item }
                             )
+                        }
+
+                        if (hasMoreToLoad) {
+                            item(span = { GridItemSpan(2) }) {
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { pageCount++ }
+                                        .padding(vertical = 6.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        horizontalArrangement = Arrangement.Center,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        CircularProgressIndicator(modifier = Modifier.size(18.dp), strokeWidth = 2.dp)
+                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Text(
+                                            text = "Loading more channels (${displayedChannels.size} of ${uiState.filteredChannels.size})...",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                }
+                            }
                         }
                     }
                 }
@@ -346,7 +499,21 @@ fun ChannelListScreen(
         EpgScheduleSheet(
             channelWithEpg = channelItem,
             schedule = schedule,
+            onPlayProgrammeVod = onPlayProgrammeVod,
+            onPlayChannelLive = { ch -> onChannelSelected(ch, rawChannels) },
             onDismiss = { selectedChannelForEpg = null }
+        )
+    }
+
+    // Playlist Switcher Bottom Sheet
+    if (showPlaylistSwitcher) {
+        PlaylistSwitcherSheet(
+            viewModel = viewModel,
+            onDismiss = { showPlaylistSwitcher = false },
+            onNavigateToInput = {
+                showPlaylistSwitcher = false
+                onChangePlaylist()
+            }
         )
     }
 }
@@ -355,6 +522,8 @@ fun ChannelListScreen(
 fun ChannelCard(
     channelWithEpg: ChannelWithEpg,
     isFavorite: Boolean,
+    showLogo: Boolean = true,
+    showEpg: Boolean = true,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     onEpgClick: () -> Unit
@@ -377,7 +546,7 @@ fun ChannelCard(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 // Channel Logo
-                if (!channel.logoUrl.isNullOrBlank()) {
+                if (showLogo && !channel.logoUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = channel.logoUrl,
                         contentDescription = channel.name,
@@ -395,11 +564,20 @@ fun ChannelCard(
                             .background(MaterialTheme.colorScheme.primaryContainer),
                         contentAlignment = Alignment.Center
                     ) {
-                        Icon(
-                            imageVector = if (channel.isVod) Icons.Default.Movie else Icons.Default.Tv,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        if (channel.name.isNotBlank()) {
+                            Text(
+                                text = channel.name.take(2).uppercase(),
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontSize = 18.sp
+                            )
+                        } else {
+                            Icon(
+                                imageVector = if (channel.isVod) Icons.Default.Movie else Icons.Default.Tv,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
 
@@ -430,7 +608,7 @@ fun ChannelCard(
                         }
                     }
 
-                    if (currentProg != null) {
+                    if (showEpg && currentProg != null) {
                         Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = "Now: ${currentProg.title}",
@@ -453,7 +631,7 @@ fun ChannelCard(
                         )
                     }
 
-                    if (channelWithEpg.nextProgramme != null) {
+                    if (showEpg && channelWithEpg.nextProgramme != null) {
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = "Next: ${channelWithEpg.nextProgramme.title}",
@@ -511,6 +689,8 @@ fun ChannelCard(
 fun ChannelGridCard(
     channelWithEpg: ChannelWithEpg,
     isFavorite: Boolean,
+    showLogo: Boolean = true,
+    showEpg: Boolean = true,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     onEpgClick: () -> Unit
@@ -537,7 +717,7 @@ fun ChannelGridCard(
                     .background(Color.White.copy(alpha = 0.08f)),
                 contentAlignment = Alignment.Center
             ) {
-                if (!channel.logoUrl.isNullOrBlank()) {
+                if (showLogo && !channel.logoUrl.isNullOrBlank()) {
                     AsyncImage(
                         model = channel.logoUrl,
                         contentDescription = channel.name,
@@ -547,12 +727,21 @@ fun ChannelGridCard(
                         contentScale = ContentScale.Fit
                     )
                 } else {
-                    Icon(
-                        imageVector = if (channel.isVod) Icons.Default.Movie else Icons.Default.Tv,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(44.dp)
-                    )
+                    if (channel.name.isNotBlank()) {
+                        Text(
+                            text = channel.name.take(2).uppercase(),
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 24.sp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (channel.isVod) Icons.Default.Movie else Icons.Default.Tv,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(44.dp)
+                        )
+                    }
                 }
 
                 // Favorite icon overlay top-right
@@ -588,7 +777,7 @@ fun ChannelGridCard(
                 maxLines = 1
             )
 
-            if (currentProg != null) {
+            if (showEpg && currentProg != null) {
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = currentProg.title,

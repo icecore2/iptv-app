@@ -32,13 +32,14 @@ import com.iptv.app.ui.viewmodel.PlayerViewModel
 fun PlayerChannelSelectorSheet(
     viewModel: PlayerViewModel,
     favoriteIds: Set<String>,
+    initialTab: Int = 0,
     onSelectChannel: (M3uItem) -> Unit,
     onDismiss: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val allChannels = uiState.channelList
 
-    var selectedTab by remember { mutableStateOf(0) } // 0: All, 1: Live, 2: VOD, 3: Favorites
+    var selectedTab by remember(initialTab) { mutableIntStateOf(initialTab) } // 0: All, 1: Live, 2: VOD, 3: Favorites
     var searchQuery by remember { mutableStateOf("") }
 
     val filteredList = remember(allChannels, selectedTab, searchQuery, favoriteIds) {
@@ -159,7 +160,6 @@ fun PlayerChannelSelectorSheet(
                                 .fillMaxWidth()
                                 .clickable {
                                     onSelectChannel(ch)
-                                    onDismiss()
                                 }
                         ) {
                             Row(
