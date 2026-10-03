@@ -124,7 +124,7 @@ public struct EpgProgrammesScreen: View {
                 }
             }
             .navigationTitle("TV Guide & Schedules")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineTitleMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Back", action: onBack)

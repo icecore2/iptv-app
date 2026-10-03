@@ -48,7 +48,7 @@ public struct ChannelListScreen: View {
                 channelContentView
             }
             .navigationTitle(viewModel.activePair?.name ?? "Channels")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineTitleMode()
             .searchable(text: $viewModel.searchQuery, prompt: "Search channels & live shows...")
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

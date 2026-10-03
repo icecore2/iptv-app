@@ -48,7 +48,7 @@ public final class XmlTvParser: NSObject, XMLParserDelegate, Sendable {
         guard data.count >= 2 else { return nil }
         #if canImport(zlib)
         var stream = z_stream()
-        var status = inflateInit2_(&stream, 16 + MAX_WBITS, ZLIB_VERSION, Int32(MemoryLayout<z_stream>.size))
+        var status = inflateInit2_(&stream, 16 + MAX_WBITS, zlibVersion(), Int32(MemoryLayout<z_stream>.size))
         guard status == Z_OK else { return nil }
         defer { inflateEnd(&stream) }
 

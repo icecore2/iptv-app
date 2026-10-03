@@ -52,7 +52,7 @@ public struct PlaylistEditSheet: View {
                 }
             }
             .navigationTitle(existingPair != nil ? "Edit Playlist" : "Add Playlist")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineTitleMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onDismiss)

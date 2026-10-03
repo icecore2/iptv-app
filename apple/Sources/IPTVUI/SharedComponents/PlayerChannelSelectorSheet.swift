@@ -106,7 +106,7 @@ public struct PlayerChannelSelectorSheet: View {
                 .searchable(text: $searchText, prompt: "Search channels...")
             }
             .navigationTitle("Switch Channel")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineTitleMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Close", action: onDismiss)

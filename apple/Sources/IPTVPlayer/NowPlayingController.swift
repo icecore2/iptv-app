@@ -27,7 +27,7 @@ public final class NowPlayingController {
         isPlaying: Bool = true
     ) {
         var info: [String: Any] = [:]
-        let title = programmeTitle ?? channelName
+#if os(iOS) || os(tvOS) || os(watchOS) || targetEnvironment(macCatalyst)
         info[MPMediaItemPropertyTitle] = title
         info[MPMediaItemPropertyArtist] = channelName
         info[MPNowPlayingInfoPropertyIsLiveStream] = isLive
@@ -37,6 +37,10 @@ public final class NowPlayingController {
             info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
         }
         info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+#elseif os(macOS)
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = elapsedTime
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? 1.0 : 0.0
+#endif
 
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }

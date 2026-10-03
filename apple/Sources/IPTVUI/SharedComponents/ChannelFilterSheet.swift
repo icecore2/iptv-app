@@ -66,7 +66,7 @@ public struct ChannelFilterSheet: View {
                 }
             }
             .navigationTitle("Filter Channels")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineTitleMode()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: onDismiss)

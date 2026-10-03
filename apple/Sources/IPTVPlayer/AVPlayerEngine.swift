@@ -242,13 +242,12 @@ public final class AVPlayerEngine: NSObject, ObservableObject {
     }
 
     private static func fourCCToString(_ fourCC: FourCharCode) -> String {
-        let bytes: [CChar] = [
-            CChar((fourCC >> 24) & 0xff),
-            CChar((fourCC >> 16) & 0xff),
-            CChar((fourCC >> 8) & 0xff),
-            CChar(fourCC & 0xff),
-            0
+        let bytes: [UInt8] = [
+            UInt8((fourCC >> 24) & 0xff),
+            UInt8((fourCC >> 16) & 0xff),
+            UInt8((fourCC >> 8) & 0xff),
+            UInt8(fourCC & 0xff)
         ]
-        return String(cString: bytes).trimmingCharacters(in: .whitespaces)
+        return String(bytes: bytes, encoding: .ascii)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "Auto"
     }
 }

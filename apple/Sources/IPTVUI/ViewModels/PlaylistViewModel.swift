@@ -237,7 +237,7 @@ public final class PlaylistViewModel: ObservableObject {
         self.currentUrl = nil
         self.currentEpgUrl = nil
         self.channels = enriched
-        self.categories = Array(NSOrderedSet(array: cats)) as! [String]
+        self.categories = Self.uniqueCategories(from: cats)
         self.selectedCategory = "All"
         self.epgData = sampleEpg
         self.epgMatcher = matcher
@@ -281,7 +281,7 @@ public final class PlaylistViewModel: ObservableObject {
             self.isLoading = false
             self.playlist = loadedPlaylist
             self.channels = enriched
-            self.categories = Array(NSOrderedSet(array: cats)) as! [String]
+            self.categories = Self.uniqueCategories(from: cats)
             self.selectedCategory = "All"
 
             let targetEpgUrl = explicitEpgUrl ?? loadedPlaylist.epgUrl
@@ -399,5 +399,17 @@ public final class PlaylistViewModel: ObservableObject {
 
     public func getChannelSchedule(for channel: M3uItem) -> [EpgProgramme] {
         epgMatcher?.getSchedule(channel: channel) ?? []
+    }
+
+    private static func uniqueCategories(from cats: [String]) -> [String] {
+        var seen = Set<String>()
+        var result = [String]()
+        for c in cats {
+            if !seen.contains(c) {
+                seen.insert(c)
+                result.append(c)
+            }
+        }
+        return result
     }
 }

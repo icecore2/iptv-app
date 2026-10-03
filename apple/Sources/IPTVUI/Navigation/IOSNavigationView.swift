@@ -99,7 +99,9 @@ public struct IOSNavigationView: View {
                             navigationPath.append(.settings)
                         }
                     )
+                    #if os(iOS)
                     .navigationBarBackButtonHidden(true)
+                    #endif
                 case .settings:
                     SettingsScreen(
                         viewModel: settingsViewModel,

@@ -66,12 +66,12 @@ jobs:
       - name: Run Swift Unit Tests
         run: |
           cd apple
-          swift test
+          swift test -v
 
       - name: Compile Release Binary for macOS
         run: |
           cd apple
-          swift build -c release
+          swift build -c release -v
 
       - name: Package macOS .app Bundle
         run: |

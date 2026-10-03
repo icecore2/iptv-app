@@ -87,7 +87,7 @@ public struct PlaylistSwitcherSheet: View {
             }
             .listStyle(.insetGrouped)
             .navigationTitle("Switch Playlist")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineTitleMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done", action: onDismiss)

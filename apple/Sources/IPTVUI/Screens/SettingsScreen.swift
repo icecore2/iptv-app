@@ -117,7 +117,7 @@ public struct SettingsScreen: View {
                 }
             }
             .navigationTitle("Settings")
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineTitleMode()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done", action: onBack)

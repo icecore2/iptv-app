@@ -84,8 +84,8 @@ public struct PlayerScreen: View {
                 }
             }
         }
-        #if canImport(UIKit)
-        .statusBar(hidden: !viewModel.isControlsVisible)
+        #if os(iOS)
+        .statusBarHidden(!viewModel.isControlsVisible)
         #endif
         .sheet(isPresented: $viewModel.isChannelSelectorVisible) {
             PlayerChannelSelectorSheet(
