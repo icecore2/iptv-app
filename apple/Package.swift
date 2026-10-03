@@ -12,6 +12,10 @@ let package = Package(
         .tvOS(.v17)
     ],
     products: [
+        .executable(
+            name: "IPTVApp",
+            targets: ["IPTVApp"]
+        ),
         .library(
             name: "IPTVCore",
             targets: ["IPTVCore"]
@@ -31,6 +35,12 @@ let package = Package(
     ],
     dependencies: [],
     targets: [
+        // Standalone executable target for macOS
+        .executableTarget(
+            name: "IPTVApp",
+            dependencies: ["IPTVCore", "IPTVData", "IPTVPlayer", "IPTVUI"],
+            path: "Sources/IPTVApp"
+        ),
         // Core pure Swift logic: models, parsers, fuzzy matchers, catchup resolver
         .target(
             name: "IPTVCore",

@@ -1,0 +1,172 @@
+name: Build & Release Multiplatform Apps
+
+on:
+  push:
+    branches: [ master, main ]
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'Release Tag Version (e.g. v1.0.0)'
+        required: false
+        default: 'v1.0.0'
+
+permissions:
+  contents: write
+
+jobs:
+  # -------------------------------------------------------------
+  # 1. Android APK Build & Test
+  # -------------------------------------------------------------
+  build-android:
+    name: Build Android APK
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Run Android Unit Tests
+        run: ./gradlew testDebugUnitTest
+
+      - name: Build Android Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Prepare Android Artifact
+        run: |
+          mkdir -p build-artifacts
+          cp app/build/outputs/apk/debug/app-debug.apk build-artifacts/iptv-app-android-debug.apk
+
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: build-artifacts/iptv-app-android-debug.apk
+
+  # -------------------------------------------------------------
+  # 2. macOS & Apple Package Build & Test
+  # -------------------------------------------------------------
+  build-apple:
+    name: Build macOS & Apple Packages
+    runs-on: macos-14
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Run Swift Unit Tests
+        run: |
+          cd apple
+          swift test
+
+      - name: Compile Release Binary for macOS
+        run: |
+          cd apple
+          swift build -c release
+
+      - name: Package macOS .app Bundle
+        run: |
+          cd apple
+          mkdir -p IPTV.app/Contents/MacOS
+          mkdir -p IPTV.app/Contents/Resources
+          cp .build/release/IPTVApp IPTV.app/Contents/MacOS/
+
+          cat << 'EOF' > IPTV.app/Contents/Info.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key>
+              <string>IPTVApp</string>
+              <key>CFBundleIdentifier</key>
+              <string>com.iptv.app.macos</string>
+              <key>CFBundleName</key>
+              <string>IPTV Player</string>
+              <key>CFBundlePackageType</key>
+              <string>APPL</string>
+              <key>CFBundleShortVersionString</key>
+              <string>1.0</string>
+              <key>LSMinimumSystemVersion</key>
+              <string>14.0</string>
+          </dict>
+          </plist>
+          EOF
+
+          zip -r ../iptv-app-macos.zip IPTV.app
+
+      - name: Upload macOS Application
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: iptv-app-macos.zip
+
+  # -------------------------------------------------------------
+  # 3. Create GitHub Release with All Compiled Apps
+  # -------------------------------------------------------------
+  release:
+    name: Publish GitHub Release
+    needs: [build-android, build-apple]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Download Android Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: android-apk
+          path: release-assets
+
+      - name: Download macOS Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-app
+          path: release-assets
+
+      - name: Determine Tag Name
+        id: tag_name
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          elif [[ -n "${{ github.event.inputs.release_tag }}" ]]; then
+            echo "tag=${{ github.event.inputs.release_tag }}" >> $GITHUB_OUTPUT
+          else
+            echo "tag=v1.0.0-${{ github.run_number }}" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag_name.outputs.tag }}
+          name: "IPTV Player ${{ steps.tag_name.outputs.tag }}"
+          body: |
+            ## IPTV Player Multiplatform Release
+            
+            Compiled binaries and application bundles for Android and macOS:
+            
+            - **Android APK**: `iptv-app-android-debug.apk` (Supports phones, tablets, Android TV)
+            - **macOS App**: `iptv-app-macos.zip` (Native Apple Silicon macOS 14+ Application)
+            
+            ### Included Features:
+            - M3U / M3U8 Playlist Parsing & Profile Management
+            - XMLTV EPG parsing with Gzip support and intelligent fuzzy matching
+            - Live TV Time-Shift Rewind and "Go Live" buffer edge detection
+            - Catchup VOD generation (Xtream Codes, Flussonic, custom templates)
+            - Aspect ratio modes (Fit, Zoom, Fill), sleep timer, and playback speeds
+            - Real-time technical stream diagnostics overlay (bitrate, codecs, fps, resolution)
+          draft: false
+          prerelease: false
+          files: |
+            release-assets/iptv-app-android-debug.apk
+            release-assets/iptv-app-macos.zip
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
