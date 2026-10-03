@@ -103,6 +103,36 @@ class SettingsViewModel(
         }
     }
 
+    fun setPreferredMetadataSource(source: com.iptv.app.core.metadata.MetadataSource) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(preferredMetadataSource = source) }
+        }
+    }
+
+    fun setMetadataLanguage(lang: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(metadataLanguage = lang) }
+        }
+    }
+
+    fun setTraktClientId(id: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(traktClientId = id) }
+        }
+    }
+
+    fun setTvdbApiKey(key: String) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(tvdbApiKey = key) }
+        }
+    }
+
+    fun toggleInlineMetadataBadge(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.updateSettings { it.copy(showInlineMetadataBadge = enabled) }
+        }
+    }
+
     fun resetToDefaults() {
         viewModelScope.launch {
             settingsRepository.resetToDefaults()

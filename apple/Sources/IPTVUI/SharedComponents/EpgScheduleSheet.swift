@@ -8,19 +8,22 @@ public struct EpgScheduleSheet: View {
     public let onPlayLive: () -> Void
     public let onPlayCatchup: (EpgProgramme) -> Void
     public let onDismiss: () -> Void
+    public let onOpenMetadata: ((String) -> Void)?
 
     public init(
         channel: M3uItem,
         schedule: [EpgProgramme],
         onPlayLive: @escaping () -> Void,
         onPlayCatchup: @escaping (EpgProgramme) -> Void,
-        onDismiss: @escaping () -> Void
+        onDismiss: @escaping () -> Void,
+        onOpenMetadata: ((String) -> Void)? = nil
     ) {
         self.channel = channel
         self.schedule = schedule
         self.onPlayLive = onPlayLive
         self.onPlayCatchup = onPlayCatchup
         self.onDismiss = onDismiss
+        self.onOpenMetadata = onOpenMetadata
     }
 
     public var body: some View {
@@ -84,8 +87,16 @@ public struct EpgScheduleSheet: View {
                 }
             }
 
-            Text(programme.title)
-                .font(.headline)
+            HStack(spacing: 6) {
+                Text(programme.title)
+                    .font(.headline)
+
+                if let onMeta = onOpenMetadata {
+                    SourceBadgeView(source: .auto) {
+                        onMeta(programme.title)
+                    }
+                }
+            }
 
             if let desc = programme.descriptionText, !desc.isEmpty {
                 Text(desc)

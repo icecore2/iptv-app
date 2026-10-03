@@ -38,6 +38,10 @@ import com.iptv.app.ui.viewmodel.ContentTypeFilter
 import com.iptv.app.ui.viewmodel.PlaylistViewModel
 import com.iptv.app.ui.viewmodel.SettingsViewModel
 import com.iptv.app.ui.viewmodel.ViewMode
+import com.iptv.app.ui.components.ProgrammeDetailsBottomSheet
+import com.iptv.app.ui.components.ProgrammeDetailsSidePanel
+import com.iptv.app.ui.components.SourceBadge
+import androidx.compose.ui.platform.LocalConfiguration
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -55,8 +59,12 @@ fun ChannelListScreen(
 
     var isSearchActive by remember { mutableStateOf(false) }
     var selectedChannelForEpg by remember { mutableStateOf<ChannelWithEpg?>(null) }
+    var selectedProgrammeForDetails by remember { mutableStateOf<Pair<EpgProgramme, M3uItem>?>(null) }
     var showFilterDialog by remember { mutableStateOf(false) }
     var showPlaylistSwitcher by remember { mutableStateOf(false) }
+
+    val configuration = LocalConfiguration.current
+    val isWideScreen = configuration.screenWidthDp >= 840
 
     // Pagination state: tracks how many pages of pageSize are loaded
     var pageCount by remember(uiState.filteredChannels, settings.enablePagination, settings.pageSize) {
@@ -220,23 +228,28 @@ fun ChannelListScreen(
         },
         contentWindowInsets = ScaffoldDefaults.contentWindowInsets
     ) { padding ->
-        Column(
+        Row(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
         ) {
-            // Content Type Tabs (All, Live TV, Movies / VOD, Favorites)
-            val contentTabs = listOf(
-                ContentTypeFilter.ALL to "All",
-                ContentTypeFilter.LIVE_TV to "Live TV",
-                ContentTypeFilter.VOD to "Movies / VOD",
-                ContentTypeFilter.FAVORITES to "Favorites (${uiState.favoriteIds.size})"
-            )
-
-            PrimaryTabRow(
-                selectedTabIndex = contentTabs.indexOfFirst { it.first == uiState.contentType }.coerceAtLeast(0),
-                containerColor = MaterialTheme.colorScheme.surface
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
             ) {
+                // Content Type Tabs (All, Live TV, Movies / VOD, Favorites)
+                val contentTabs = listOf(
+                    ContentTypeFilter.ALL to "All",
+                    ContentTypeFilter.LIVE_TV to "Live TV",
+                    ContentTypeFilter.VOD to "Movies / VOD",
+                    ContentTypeFilter.FAVORITES to "Favorites (${uiState.favoriteIds.size})"
+                )
+
+                PrimaryTabRow(
+                    selectedTabIndex = contentTabs.indexOfFirst { it.first == uiState.contentType }.coerceAtLeast(0),
+                    containerColor = MaterialTheme.colorScheme.surface
+                ) {
                 contentTabs.forEachIndexed { index, (type, label) ->
                     Tab(
                         selected = uiState.contentType == type,
@@ -391,6 +404,9 @@ fun ChannelListScreen(
                                 isFavorite = viewModel.isFavorite(item.channel.id),
                                 showLogo = settings.showChannelLogos,
                                 showEpg = settings.showEpgInList,
+                                showMetadataBadge = settings.showInlineMetadataBadge && uiState.epgMatcher != null,
+                                metadataSource = settings.preferredMetadataSource,
+                                onProgrammeMetadataClick = { prog -> selectedProgrammeForDetails = prog to item.channel },
                                 onToggleFavorite = { viewModel.toggleFavorite(item.channel.id) },
                                 onClick = {
                                     viewModel.addRecentChannel(item.channel)
@@ -443,6 +459,9 @@ fun ChannelListScreen(
                                 isFavorite = viewModel.isFavorite(item.channel.id),
                                 showLogo = settings.showChannelLogos,
                                 showEpg = settings.showEpgInList,
+                                showMetadataBadge = settings.showInlineMetadataBadge && uiState.epgMatcher != null,
+                                metadataSource = settings.preferredMetadataSource,
+                                onProgrammeMetadataClick = { prog -> selectedProgrammeForDetails = prog to item.channel },
                                 onToggleFavorite = { viewModel.toggleFavorite(item.channel.id) },
                                 onClick = {
                                     viewModel.addRecentChannel(item.channel)
@@ -483,6 +502,48 @@ fun ChannelListScreen(
                 }
             }
         }
+
+        if (isWideScreen && selectedProgrammeForDetails != null) {
+                val (prog, ch) = selectedProgrammeForDetails!!
+                ProgrammeDetailsSidePanel(
+                    programmeTitle = prog.title,
+                    channelName = ch.name,
+                    metadataRepository = viewModel.metadataRepository,
+                    preferredLanguage = settings.metadataLanguage,
+                    preferredSource = settings.preferredMetadataSource,
+                    onPlayLive = {
+                        viewModel.addRecentChannel(ch)
+                        onChannelSelected(ch, rawChannels)
+                    },
+                    onPlayVod = {
+                        onPlayProgrammeVod(prog, ch)
+                    },
+                    onClose = { selectedProgrammeForDetails = null }
+                )
+            }
+        }
+    }
+
+    // Programme Details Bottom Sheet (compact/portrait)
+    if (!isWideScreen && selectedProgrammeForDetails != null) {
+        val (prog, ch) = selectedProgrammeForDetails!!
+        ProgrammeDetailsBottomSheet(
+            programmeTitle = prog.title,
+            channelName = ch.name,
+            metadataRepository = viewModel.metadataRepository,
+            preferredLanguage = settings.metadataLanguage,
+            preferredSource = settings.preferredMetadataSource,
+            onPlayLive = {
+                selectedProgrammeForDetails = null
+                viewModel.addRecentChannel(ch)
+                onChannelSelected(ch, rawChannels)
+            },
+            onPlayVod = {
+                selectedProgrammeForDetails = null
+                onPlayProgrammeVod(prog, ch)
+            },
+            onDismiss = { selectedProgrammeForDetails = null }
+        )
     }
 
     // Interactive Filter Dialog
@@ -499,6 +560,9 @@ fun ChannelListScreen(
         EpgScheduleSheet(
             channelWithEpg = channelItem,
             schedule = schedule,
+            showMetadataBadge = settings.showInlineMetadataBadge && uiState.epgMatcher != null,
+            metadataSource = settings.preferredMetadataSource,
+            onProgrammeMetadataClick = { prog -> selectedProgrammeForDetails = prog to channelItem.channel },
             onPlayProgrammeVod = onPlayProgrammeVod,
             onPlayChannelLive = { ch -> onChannelSelected(ch, rawChannels) },
             onDismiss = { selectedChannelForEpg = null }
@@ -524,6 +588,9 @@ fun ChannelCard(
     isFavorite: Boolean,
     showLogo: Boolean = true,
     showEpg: Boolean = true,
+    showMetadataBadge: Boolean = false,
+    metadataSource: com.iptv.app.core.metadata.MetadataSource = com.iptv.app.core.metadata.MetadataSource.AUTO,
+    onProgrammeMetadataClick: ((EpgProgramme) -> Unit)? = null,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     onEpgClick: () -> Unit
@@ -610,14 +677,27 @@ fun ChannelCard(
 
                     if (showEpg && currentProg != null) {
                         Spacer(modifier = Modifier.height(4.dp))
-                        Text(
-                            text = "Now: ${currentProg.title}",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Now: ${currentProg.title}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (showMetadataBadge && onProgrammeMetadataClick != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                SourceBadge(
+                                    source = metadataSource,
+                                    onClick = { onProgrammeMetadataClick(currentProg) }
+                                )
+                            }
+                        }
 
                         Spacer(modifier = Modifier.height(4.dp))
                         LinearProgressIndicator(
@@ -633,13 +713,26 @@ fun ChannelCard(
 
                     if (showEpg && channelWithEpg.nextProgramme != null) {
                         Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = "Next: ${channelWithEpg.nextProgramme.title}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Text(
+                                text = "Next: ${channelWithEpg.nextProgramme.title}",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f, fill = false)
+                            )
+                            if (showMetadataBadge && onProgrammeMetadataClick != null) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                SourceBadge(
+                                    source = metadataSource,
+                                    onClick = { onProgrammeMetadataClick(channelWithEpg.nextProgramme) }
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -691,6 +784,9 @@ fun ChannelGridCard(
     isFavorite: Boolean,
     showLogo: Boolean = true,
     showEpg: Boolean = true,
+    showMetadataBadge: Boolean = false,
+    metadataSource: com.iptv.app.core.metadata.MetadataSource = com.iptv.app.core.metadata.MetadataSource.AUTO,
+    onProgrammeMetadataClick: ((EpgProgramme) -> Unit)? = null,
     onToggleFavorite: () -> Unit,
     onClick: () -> Unit,
     onEpgClick: () -> Unit
@@ -779,14 +875,28 @@ fun ChannelGridCard(
 
             if (showEpg && currentProg != null) {
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = currentProg.title,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = currentProg.title,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (showMetadataBadge && onProgrammeMetadataClick != null) {
+                        Spacer(modifier = Modifier.width(4.dp))
+                        SourceBadge(
+                            source = metadataSource,
+                            onClick = { onProgrammeMetadataClick(currentProg) }
+                        )
+                    }
+                }
                 Spacer(modifier = Modifier.height(2.dp))
                 LinearProgressIndicator(
                     progress = { channelWithEpg.progress },

@@ -148,6 +148,7 @@ fun IptvAppNavigation(
             val rawChannels = playlistState.channels.map { it.channel }
             EpgProgrammesScreen(
                 viewModel = playlistViewModel,
+                settingsViewModel = settingsViewModel,
                 onPlayProgrammeVod = { programme, channel ->
                     playerViewModel.playProgrammeVod(
                         programme = programme,

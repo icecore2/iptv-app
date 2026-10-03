@@ -33,6 +33,13 @@ public struct AppSettings: Hashable, Codable, Sendable {
     public var defaultAspectRatio: AspectRatioMode
     public var showStreamInfoOverlay: Bool
 
+    // Metadata Integration (IMDb, Trakt, sratim.co.il, TVDB)
+    public var preferredMetadataSource: MetadataSource
+    public var metadataLanguage: String
+    public var traktClientId: String
+    public var tvdbApiKey: String
+    public var showInlineMetadataBadge: Bool
+
     public init(
         showChannelLogos: Bool = true,
         enablePagination: Bool = true,
@@ -45,7 +52,12 @@ public struct AppSettings: Hashable, Codable, Sendable {
         fastChannelSwitching: Bool = true,
         hardwareAcceleration: Bool = true,
         defaultAspectRatio: AspectRatioMode = .fit,
-        showStreamInfoOverlay: Bool = false
+        showStreamInfoOverlay: Bool = false,
+        preferredMetadataSource: MetadataSource = .auto,
+        metadataLanguage: String = "auto",
+        traktClientId: String = "",
+        tvdbApiKey: String = "",
+        showInlineMetadataBadge: Bool = true
     ) {
         self.showChannelLogos = showChannelLogos
         self.enablePagination = enablePagination
@@ -59,6 +71,11 @@ public struct AppSettings: Hashable, Codable, Sendable {
         self.hardwareAcceleration = hardwareAcceleration
         self.defaultAspectRatio = defaultAspectRatio
         self.showStreamInfoOverlay = showStreamInfoOverlay
+        self.preferredMetadataSource = preferredMetadataSource
+        self.metadataLanguage = metadataLanguage
+        self.traktClientId = traktClientId
+        self.tvdbApiKey = tvdbApiKey
+        self.showInlineMetadataBadge = showInlineMetadataBadge
     }
 
     public static let bufferPresets: [(Int, String)] = [
@@ -77,4 +94,17 @@ public struct AppSettings: Hashable, Codable, Sendable {
     ]
 
     public static let pageSizeOptions: [Int] = [25, 50, 100, 200]
+
+    public static let metadataLanguageOptions: [(String, String)] = [
+        ("auto", "Auto (Detect / Default)"),
+        ("en", "English"),
+        ("he", "עברית (Hebrew)"),
+        ("es", "Español (Spanish)"),
+        ("fr", "Français (French)"),
+        ("de", "Deutsch (German)"),
+        ("it", "Italiano (Italian)"),
+        ("ru", "Русский (Russian)"),
+        ("ar", "العربية (Arabic)"),
+        ("pt", "Português (Portuguese)")
+    ]
 }

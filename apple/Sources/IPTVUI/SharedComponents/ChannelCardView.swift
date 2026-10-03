@@ -8,9 +8,11 @@ public struct ChannelCardView: View {
     public let showLogos: Bool
     public let showEpg: Bool
     public let isFavorite: Bool
+    public let showMetadataBadge: Bool
     public let onSelect: () -> Void
     public let onToggleFavorite: () -> Void
     public let onOpenEpg: (() -> Void)?
+    public let onOpenMetadata: ((String) -> Void)?
 
     public init(
         item: ChannelWithEpg,
@@ -18,18 +20,22 @@ public struct ChannelCardView: View {
         showLogos: Bool = true,
         showEpg: Bool = true,
         isFavorite: Bool = false,
+        showMetadataBadge: Bool = true,
         onSelect: @escaping () -> Void,
         onToggleFavorite: @escaping () -> Void,
-        onOpenEpg: (() -> Void)? = nil
+        onOpenEpg: (() -> Void)? = nil,
+        onOpenMetadata: ((String) -> Void)? = nil
     ) {
         self.item = item
         self.isGrid = isGrid
         self.showLogos = showLogos
         self.showEpg = showEpg
         self.isFavorite = isFavorite
+        self.showMetadataBadge = showMetadataBadge
         self.onSelect = onSelect
         self.onToggleFavorite = onToggleFavorite
         self.onOpenEpg = onOpenEpg
+        self.onOpenMetadata = onOpenMetadata
     }
 
     public var body: some View {
@@ -70,20 +76,36 @@ public struct ChannelCardView: View {
                 }
 
                 if showEpg, let prog = item.currentProgramme {
-                    Text(prog.title)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(prog.title)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        if showMetadataBadge {
+                            SourceBadgeView(source: .auto) {
+                                onOpenMetadata?(prog.title)
+                            }
+                        }
+                    }
 
                     ProgressView(value: item.progress)
                         .progressViewStyle(.linear)
                         .tint(Color.accentColor)
                         .scaleEffect(y: 0.6)
                 } else {
-                    Text(item.channel.group)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(item.channel.group)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+
+                        if item.channel.isVod && showMetadataBadge {
+                            SourceBadgeView(source: .auto) {
+                                onOpenMetadata?(item.channel.name)
+                            }
+                        }
+                    }
                 }
             }
 
@@ -129,20 +151,36 @@ public struct ChannelCardView: View {
                 .lineLimit(1)
 
             if showEpg, let prog = item.currentProgramme {
-                Text(prog.title)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(prog.title)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    if showMetadataBadge {
+                        SourceBadgeView(source: .auto) {
+                            onOpenMetadata?(prog.title)
+                        }
+                    }
+                }
 
                 ProgressView(value: item.progress)
                     .progressViewStyle(.linear)
                     .tint(Color.accentColor)
                     .scaleEffect(y: 0.5)
             } else {
-                Text(item.channel.group)
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(item.channel.group)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+
+                    if item.channel.isVod && showMetadataBadge {
+                        SourceBadgeView(source: .auto) {
+                            onOpenMetadata?(item.channel.name)
+                        }
+                    }
+                }
             }
         }
         .padding(10)

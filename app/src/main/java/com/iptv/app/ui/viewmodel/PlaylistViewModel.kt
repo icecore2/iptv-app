@@ -112,7 +112,8 @@ data class PlaylistUiState(
 class PlaylistViewModel(
     private val playlistRepository: PlaylistRepository = PlaylistRepository(),
     private val epgRepository: EpgRepository = EpgRepository(),
-    private val savedPlaylistRepository: SavedPlaylistRepository = InMemorySavedPlaylistRepository()
+    private val savedPlaylistRepository: SavedPlaylistRepository = InMemorySavedPlaylistRepository(),
+    val metadataRepository: com.iptv.app.data.ProgrammeMetadataRepository = com.iptv.app.data.ProgrammeMetadataRepository()
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(PlaylistUiState())

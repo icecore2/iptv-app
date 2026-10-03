@@ -35,6 +35,9 @@ import java.time.format.DateTimeFormatter
 fun EpgScheduleSheet(
     channelWithEpg: ChannelWithEpg,
     schedule: List<EpgProgramme>,
+    showMetadataBadge: Boolean = false,
+    metadataSource: com.iptv.app.core.metadata.MetadataSource = com.iptv.app.core.metadata.MetadataSource.IMDB,
+    onProgrammeMetadataClick: ((EpgProgramme) -> Unit)? = null,
     onPlayProgrammeVod: ((EpgProgramme, M3uItem) -> Unit)? = null,
     onPlayChannelLive: ((M3uItem) -> Unit)? = null,
     onDismiss: () -> Unit
@@ -239,11 +242,23 @@ fun EpgScheduleSheet(
 
                                 Spacer(modifier = Modifier.height(4.dp))
 
-                                Text(
-                                    text = programme.title,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    Text(
+                                        text = programme.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Bold,
+                                        modifier = Modifier.weight(1f, fill = false)
+                                    )
+                                    if (showMetadataBadge && onProgrammeMetadataClick != null) {
+                                        com.iptv.app.ui.components.SourceBadge(
+                                            source = metadataSource,
+                                            onClick = { onProgrammeMetadataClick(programme) }
+                                        )
+                                    }
+                                }
 
                                 if (!programme.description.isNullOrBlank()) {
                                     Spacer(modifier = Modifier.height(4.dp))

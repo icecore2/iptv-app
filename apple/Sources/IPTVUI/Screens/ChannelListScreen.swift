@@ -206,8 +206,10 @@ public struct ChannelListScreen: View {
                                 showLogos: settingsViewModel.settings.showChannelLogos,
                                 showEpg: settingsViewModel.settings.showEpgInList,
                                 isFavorite: viewModel.isFavorite(channelId: item.channel.id),
+                                showMetadataBadge: settingsViewModel.settings.showInlineMetadataBadge,
                                 onSelect: { onChannelSelected(item.channel, rawChannels) },
-                                onToggleFavorite: { viewModel.toggleFavorite(channelId: item.channel.id) }
+                                onToggleFavorite: { viewModel.toggleFavorite(channelId: item.channel.id) },
+                                onOpenMetadata: { title in viewModel.openMetadataDetails(title: title) }
                             )
                         }
                     }
@@ -221,13 +223,29 @@ public struct ChannelListScreen: View {
                                 showLogos: settingsViewModel.settings.showChannelLogos,
                                 showEpg: settingsViewModel.settings.showEpgInList,
                                 isFavorite: viewModel.isFavorite(channelId: item.channel.id),
+                                showMetadataBadge: settingsViewModel.settings.showInlineMetadataBadge,
                                 onSelect: { onChannelSelected(item.channel, rawChannels) },
-                                onToggleFavorite: { viewModel.toggleFavorite(channelId: item.channel.id) }
+                                onToggleFavorite: { viewModel.toggleFavorite(channelId: item.channel.id) },
+                                onOpenMetadata: { title in viewModel.openMetadataDetails(title: title) }
                             )
                         }
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 8)
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { viewModel.selectedMetadataItem != nil },
+                set: { if !$0 { viewModel.closeMetadataDetails() } }
+            )) {
+                if let metaItem = viewModel.selectedMetadataItem {
+                    ProgrammeDetailsSplitView(
+                        rawTitle: metaItem.title,
+                        initialMetadata: metaItem.metadata,
+                        metadataRepository: viewModel.metadataRepository,
+                        preferredLanguage: settingsViewModel.settings.metadataLanguage,
+                        onClose: { viewModel.closeMetadataDetails() }
+                    )
                 }
             }
             .refreshable {

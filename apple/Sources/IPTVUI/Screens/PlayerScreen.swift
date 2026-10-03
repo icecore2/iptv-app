@@ -109,7 +109,22 @@ public struct PlayerScreen: View {
                     onPlayCatchup: { prog in
                         viewModel.playProgrammeVod(programme: prog, channel: chan, playlist: viewModel.channelList, matcher: viewModel.matcher)
                     },
-                    onDismiss: { viewModel.setEpgSheetVisible(false) }
+                    onDismiss: { viewModel.setEpgSheetVisible(false) },
+                    onOpenMetadata: { title in viewModel.openMetadata(for: title) }
+                )
+            }
+        }
+        .sheet(isPresented: Binding(
+            get: { viewModel.selectedMetadataItem != nil },
+            set: { if !$0 { viewModel.closeMetadata() } }
+        )) {
+            if let metaItem = viewModel.selectedMetadataItem {
+                ProgrammeDetailsSplitView(
+                    rawTitle: metaItem.title,
+                    initialMetadata: metaItem.metadata,
+                    metadataRepository: viewModel.metadataRepository,
+                    preferredLanguage: settingsViewModel.settings.metadataLanguage,
+                    onClose: { viewModel.closeMetadata() }
                 )
             }
         }
@@ -240,15 +255,31 @@ public struct PlayerScreen: View {
                     .lineLimit(1)
 
                 if let prog = viewModel.activeProgramme {
-                    Text(prog.title)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.8))
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(prog.title)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.8))
+                            .lineLimit(1)
+
+                        if settingsViewModel.settings.showInlineMetadataBadge {
+                            SourceBadgeView(source: .auto) {
+                                viewModel.openMetadata(for: prog.title)
+                            }
+                        }
+                    }
                 } else if let channel = viewModel.currentChannel {
-                    Text(channel.group)
-                        .font(.caption)
-                        .foregroundStyle(.white.opacity(0.7))
-                        .lineLimit(1)
+                    HStack(spacing: 6) {
+                        Text(channel.group)
+                            .font(.caption)
+                            .foregroundStyle(.white.opacity(0.7))
+                            .lineLimit(1)
+
+                        if channel.isVod && settingsViewModel.settings.showInlineMetadataBadge {
+                            SourceBadgeView(source: .auto) {
+                                viewModel.openMetadata(for: channel.name)
+                            }
+                        }
+                    }
                 }
             }
 

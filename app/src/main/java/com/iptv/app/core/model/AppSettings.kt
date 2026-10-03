@@ -32,7 +32,14 @@ data class AppSettings(
     val fastChannelSwitching: Boolean = true,
     val hardwareAcceleration: Boolean = true,
     val defaultAspectRatio: AspectRatioMode = AspectRatioMode.FIT,
-    val showStreamInfoOverlay: Boolean = false
+    val showStreamInfoOverlay: Boolean = false,
+
+    // Metadata & EPG Integrations (IMDb, Trakt, sratim.co.il, TVDB)
+    val preferredMetadataSource: com.iptv.app.core.metadata.MetadataSource = com.iptv.app.core.metadata.MetadataSource.AUTO,
+    val metadataLanguage: String = "en",
+    val traktClientId: String = "",
+    val tvdbApiKey: String = "",
+    val showInlineMetadataBadge: Boolean = true
 ) {
     companion object {
         val BUFFER_PRESETS = listOf(
@@ -51,5 +58,16 @@ data class AppSettings(
         )
 
         val PAGE_SIZE_OPTIONS = listOf(25, 50, 100, 200)
+
+        val METADATA_LANGUAGE_OPTIONS = listOf(
+            "en" to "English (en)",
+            "he" to "עברית - Hebrew (he)",
+            "es" to "Español - Spanish (es)",
+            "fr" to "Français - French (fr)",
+            "de" to "Deutsch - German (de)",
+            "ru" to "Русский - Russian (ru)",
+            "it" to "Italiano - Italian (it)",
+            "ar" to "العربية - Arabic (ar)"
+        )
     }
 }

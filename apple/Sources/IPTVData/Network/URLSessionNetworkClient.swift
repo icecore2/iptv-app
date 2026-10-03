@@ -54,4 +54,42 @@ public final class URLSessionNetworkClient: NetworkClient {
 
         return data
     }
+
+    public func postData(to url: URL, body: Data? = nil, headers: [String: String] = [:]) async throws -> Data {
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.httpBody = body
+
+        var hasUserAgent = false
+        for (key, value) in headers {
+            request.setValue(value, forHTTPHeaderField: key)
+            if key.lowercased() == "user-agent" {
+                hasUserAgent = true
+            }
+        }
+
+        if !hasUserAgent {
+            request.setValue(
+                "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15",
+                forHTTPHeaderField: "User-Agent"
+            )
+        }
+
+        let (data, response) = try await session.data(for: request)
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            return data
+        }
+
+        guard (200...299).contains(httpResponse.statusCode) else {
+            let message = HTTPURLResponse.localizedString(forStatusCode: httpResponse.statusCode)
+            throw NetworkError.httpError(statusCode: httpResponse.statusCode, message: message)
+        }
+
+        guard !data.isEmpty else {
+            throw NetworkError.emptyResponse
+        }
+
+        return data
+    }
 }

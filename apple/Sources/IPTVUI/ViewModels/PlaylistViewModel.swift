@@ -69,23 +69,45 @@ public final class PlaylistViewModel: ObservableObject {
     @Published public var epgMatcher: EpgMatcher? = nil
     @Published public var savedPlaylists: [SavedPlaylistPair] = []
     @Published public var activePairId: String? = nil
+    @Published public var metadataCache: [String: ProgrammeMetadata] = [:]
+    @Published public var selectedMetadataItem: (title: String, metadata: ProgrammeMetadata?)? = nil
 
     private let playlistRepository: PlaylistRepository
     private let epgRepository: EpgRepository
     private let savedPlaylistRepository: SavedPlaylistRepository
+    public let metadataRepository: ProgrammeMetadataRepository
 
     public init(
         playlistRepository: PlaylistRepository = PlaylistRepository(),
         epgRepository: EpgRepository = EpgRepository(),
-        savedPlaylistRepository: SavedPlaylistRepository = UserDefaultsSavedPlaylistRepository()
+        savedPlaylistRepository: SavedPlaylistRepository = UserDefaultsSavedPlaylistRepository(),
+        metadataRepository: ProgrammeMetadataRepository = ProgrammeMetadataRepository()
     ) {
         self.playlistRepository = playlistRepository
         self.epgRepository = epgRepository
         self.savedPlaylistRepository = savedPlaylistRepository
+        self.metadataRepository = metadataRepository
 
         Task {
             await loadSavedPlaylists()
         }
+    }
+
+    public func openMetadataDetails(title: String, metadata: ProgrammeMetadata? = nil) {
+        self.selectedMetadataItem = (title: title, metadata: metadata)
+    }
+
+    public func closeMetadataDetails() {
+        self.selectedMetadataItem = nil
+    }
+
+    public func resolveMetadata(for title: String, preferredSource: MetadataSource = .auto, language: String = "en") async -> ProgrammeMetadata? {
+        if let cached = metadataCache[title] { return cached }
+        if let found = await metadataRepository.resolveMetadata(rawTitle: title, preferredSource: preferredSource, language: language) {
+            metadataCache[title] = found
+            return found
+        }
+        return nil
     }
 
     public var activePair: SavedPlaylistPair? {

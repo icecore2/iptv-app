@@ -45,6 +45,14 @@ class PlaylistViewModelTest {
             }
             throw IllegalArgumentException("Fake network error for $url")
         }
+
+        override suspend fun postForm(url: String, formParams: Map<String, String>, headers: Map<String, String>): InputStream {
+            throw IllegalArgumentException("Fake network error for $url")
+        }
+
+        override suspend fun postJson(url: String, jsonBody: String, headers: Map<String, String>): InputStream {
+            throw IllegalArgumentException("Fake network error for $url")
+        }
     }
 
     @Before

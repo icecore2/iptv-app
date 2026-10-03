@@ -43,6 +43,12 @@ class SharedPreferencesSettingsRepository(
         private const val KEY_HARDWARE_ACCELERATION = "pref_hardware_acceleration"
         private const val KEY_DEFAULT_ASPECT_RATIO = "pref_default_aspect_ratio"
         private const val KEY_SHOW_STREAM_INFO_OVERLAY = "pref_show_stream_info_overlay"
+
+        private const val KEY_PREFERRED_METADATA_SOURCE = "pref_preferred_metadata_source"
+        private const val KEY_METADATA_LANGUAGE = "pref_metadata_language"
+        private const val KEY_TRAKT_CLIENT_ID = "pref_trakt_client_id"
+        private const val KEY_TVDB_API_KEY = "pref_tvdb_api_key"
+        private const val KEY_SHOW_INLINE_METADATA_BADGE = "pref_show_inline_metadata_badge"
     }
 
     private fun loadFromPrefs(): AppSettings {
@@ -52,6 +58,14 @@ class SharedPreferencesSettingsRepository(
             AspectRatioMode.valueOf(modeStr)
         } catch (_: Exception) {
             defaultMode
+        }
+
+        val sourceStr = prefs.getString(KEY_PREFERRED_METADATA_SOURCE, com.iptv.app.core.metadata.MetadataSource.AUTO.name)
+            ?: com.iptv.app.core.metadata.MetadataSource.AUTO.name
+        val parsedSource = try {
+            com.iptv.app.core.metadata.MetadataSource.valueOf(sourceStr)
+        } catch (_: Exception) {
+            com.iptv.app.core.metadata.MetadataSource.AUTO
         }
 
         return AppSettings(
@@ -66,7 +80,12 @@ class SharedPreferencesSettingsRepository(
             fastChannelSwitching = prefs.getBoolean(KEY_FAST_SWITCHING, true),
             hardwareAcceleration = prefs.getBoolean(KEY_HARDWARE_ACCELERATION, true),
             defaultAspectRatio = parsedMode,
-            showStreamInfoOverlay = prefs.getBoolean(KEY_SHOW_STREAM_INFO_OVERLAY, false)
+            showStreamInfoOverlay = prefs.getBoolean(KEY_SHOW_STREAM_INFO_OVERLAY, false),
+            preferredMetadataSource = parsedSource,
+            metadataLanguage = prefs.getString(KEY_METADATA_LANGUAGE, "en") ?: "en",
+            traktClientId = prefs.getString(KEY_TRAKT_CLIENT_ID, "") ?: "",
+            tvdbApiKey = prefs.getString(KEY_TVDB_API_KEY, "") ?: "",
+            showInlineMetadataBadge = prefs.getBoolean(KEY_SHOW_INLINE_METADATA_BADGE, true)
         )
     }
 
@@ -90,6 +109,11 @@ class SharedPreferencesSettingsRepository(
             putBoolean(KEY_HARDWARE_ACCELERATION, updated.hardwareAcceleration)
             putString(KEY_DEFAULT_ASPECT_RATIO, updated.defaultAspectRatio.name)
             putBoolean(KEY_SHOW_STREAM_INFO_OVERLAY, updated.showStreamInfoOverlay)
+            putString(KEY_PREFERRED_METADATA_SOURCE, updated.preferredMetadataSource.name)
+            putString(KEY_METADATA_LANGUAGE, updated.metadataLanguage)
+            putString(KEY_TRAKT_CLIENT_ID, updated.traktClientId)
+            putString(KEY_TVDB_API_KEY, updated.tvdbApiKey)
+            putBoolean(KEY_SHOW_INLINE_METADATA_BADGE, updated.showInlineMetadataBadge)
         }.apply()
         _settingsFlow.value = updated
     }

@@ -59,12 +59,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.iptv.app.core.model.AppSettings
 import com.iptv.app.core.model.ChannelWithEpg
+import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.data.PlaybackCacheManager
 import com.iptv.app.ui.viewmodel.AspectRatioMode
 import com.iptv.app.ui.viewmodel.PlayerViewModel
 import com.iptv.app.ui.viewmodel.SettingsViewModel
 import com.iptv.app.ui.viewmodel.StreamInfo
 import kotlinx.coroutines.delay
+import com.iptv.app.ui.components.ProgrammeDetailsBottomSheet
+import com.iptv.app.ui.components.SourceBadge
 import java.util.Locale
 
 @OptIn(UnstableApi::class)
@@ -83,6 +86,7 @@ fun PlayerScreen(
     val settings = settingsViewModel?.settings?.collectAsState()?.value ?: AppSettings()
 
     var showPlayerSettingsSheet by remember { mutableStateOf(false) }
+    var selectedMetadataProgramme by remember { mutableStateOf<EpgProgramme?>(null) }
     var channelSelectorTab by remember { mutableIntStateOf(0) } // 1: Live Channels, 2: VOD, 0: All
 
     // Screen gesture states
@@ -994,12 +998,24 @@ fun PlayerScreen(
                                 color = MaterialTheme.colorScheme.secondary,
                                 fontWeight = FontWeight.Bold
                             )
-                            Text(
-                                text = currentProg.title,
-                                color = Color.White,
-                                style = MaterialTheme.typography.titleMedium,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = currentProg.title,
+                                    color = Color.White,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier.weight(1f, fill = false)
+                                )
+                                if (settings.showInlineMetadataBadge) {
+                                    SourceBadge(
+                                        source = settings.preferredMetadataSource,
+                                        onClick = { selectedMetadataProgramme = currentProg }
+                                    )
+                                }
+                            }
                             if (!currentProg.description.isNullOrBlank()) {
                                 Text(
                                     text = currentProg.description,
@@ -1084,6 +1100,12 @@ fun PlayerScreen(
             EpgScheduleSheet(
                 channelWithEpg = epgChannel,
                 schedule = schedule,
+                showMetadataBadge = settings.showInlineMetadataBadge,
+                metadataSource = settings.preferredMetadataSource,
+                onProgrammeMetadataClick = { prog ->
+                    viewModel.setEpgSheetVisible(false)
+                    selectedMetadataProgramme = prog
+                },
                 onPlayProgrammeVod = { prog, ch ->
                     viewModel.playProgrammeVod(prog, ch, uiState.channelList, uiState.matcher)
                 },
@@ -1126,6 +1148,26 @@ fun PlayerScreen(
                 showPlayerSettingsSheet = false
                 onOpenSettings()
             }
+        )
+    }
+
+    // 7. Programme Metadata Details Bottom Sheet
+    val metaProg = selectedMetadataProgramme
+    if (metaProg != null) {
+        ProgrammeDetailsBottomSheet(
+            programmeTitle = metaProg.title,
+            channelName = channel?.name,
+            metadataRepository = viewModel.metadataRepository,
+            preferredLanguage = settings.metadataLanguage,
+            preferredSource = settings.preferredMetadataSource,
+            onPlayLive = { selectedMetadataProgramme = null },
+            onPlayVod = {
+                selectedMetadataProgramme = null
+                channel?.let { ch ->
+                    viewModel.playProgrammeVod(metaProg, ch, uiState.channelList, uiState.matcher)
+                }
+            },
+            onDismiss = { selectedMetadataProgramme = null }
         )
     }
 }

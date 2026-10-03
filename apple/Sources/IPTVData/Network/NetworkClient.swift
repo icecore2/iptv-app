@@ -3,6 +3,7 @@ import Foundation
 /// Defines network access operations for streaming playlists, EPG XML feeds, and logos.
 public protocol NetworkClient: Sendable {
     func fetchData(from url: URL, headers: [String: String]) async throws -> Data
+    func postData(to url: URL, body: Data?, headers: [String: String]) async throws -> Data
 }
 
 public enum NetworkError: LocalizedError {

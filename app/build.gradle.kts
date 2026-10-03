@@ -77,6 +77,7 @@ dependencies {
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(libs.kxml2) // XML pull parser implementation for pure JVM unit tests
+    testImplementation("org.json:json:20240303")
 
     // Android Testing & Debug
     androidTestImplementation(libs.androidx.junit)

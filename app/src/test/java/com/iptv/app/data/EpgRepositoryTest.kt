@@ -15,6 +15,12 @@ class EpgRepositoryTest {
         override suspend fun openStream(url: String, headers: Map<String, String>): InputStream {
             return responseStream ?: throw IllegalArgumentException("Network error for $url")
         }
+        override suspend fun postForm(url: String, formParams: Map<String, String>, headers: Map<String, String>): InputStream {
+            return responseStream ?: throw IllegalArgumentException("Network error for $url")
+        }
+        override suspend fun postJson(url: String, jsonBody: String, headers: Map<String, String>): InputStream {
+            return responseStream ?: throw IllegalArgumentException("Network error for $url")
+        }
     }
 
     @Test

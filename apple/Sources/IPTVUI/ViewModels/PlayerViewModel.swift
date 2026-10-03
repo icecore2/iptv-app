@@ -47,14 +47,25 @@ public final class PlayerViewModel: ObservableObject {
 
     // EPG Schedule for timeline markers & tooltips
     @Published public var currentSchedule: [EpgProgramme] = []
+    @Published public var selectedMetadataItem: (title: String, metadata: ProgrammeMetadata?)? = nil
 
+    public let metadataRepository: ProgrammeMetadataRepository
     private var sleepTimerTask: Task<Void, Never>?
     private var cancellables = Set<AnyCancellable>()
     private var lastMatchedProgramme: EpgProgramme? = nil
 
-    public init() {
+    public init(metadataRepository: ProgrammeMetadataRepository = ProgrammeMetadataRepository()) {
+        self.metadataRepository = metadataRepository
         bindPlayerEngine()
         setupNowPlayingCallbacks()
+    }
+
+    public func openMetadata(for title: String, metadata: ProgrammeMetadata? = nil) {
+        self.selectedMetadataItem = (title: title, metadata: metadata)
+    }
+
+    public func closeMetadata() {
+        self.selectedMetadataItem = nil
     }
 
     public var hasAnyDialogOpen: Bool {

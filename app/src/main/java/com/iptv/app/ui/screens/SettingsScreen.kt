@@ -67,7 +67,7 @@ fun SettingsScreen(
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.Tune, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("General & List", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal)
+                            Text("General", fontWeight = if (selectedTab == 0) FontWeight.Bold else FontWeight.Normal)
                         }
                     }
                 )
@@ -76,9 +76,20 @@ fun SettingsScreen(
                     onClick = { selectedTab = 1 },
                     text = {
                         Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Default.Movie, contentDescription = null, modifier = Modifier.size(18.dp))
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Metadata", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal)
+                        }
+                    }
+                )
+                Tab(
+                    selected = selectedTab == 2,
+                    onClick = { selectedTab = 2 },
+                    text = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
                             Icon(Icons.Default.PlayCircle, contentDescription = null, modifier = Modifier.size(18.dp))
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Player Settings", fontWeight = if (selectedTab == 1) FontWeight.Bold else FontWeight.Normal)
+                            Text("Player", fontWeight = if (selectedTab == 2) FontWeight.Bold else FontWeight.Normal)
                         }
                     }
                 )
@@ -92,14 +103,17 @@ fun SettingsScreen(
                     .navigationBarsPadding(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (selectedTab == 0) {
-                    GeneralSettingsSection(
+                when (selectedTab) {
+                    0 -> GeneralSettingsSection(
                         settings = settings,
                         viewModel = viewModel,
                         onShowResetConfirm = { showResetConfirm = true }
                     )
-                } else {
-                    PlayerSettingsSection(
+                    1 -> MetadataSettingsSection(
+                        settings = settings,
+                        viewModel = viewModel
+                    )
+                    2 -> PlayerSettingsSection(
                         settings = settings,
                         viewModel = viewModel
                     )
@@ -230,6 +244,262 @@ private fun GeneralSettingsSection(
         Icon(Icons.Default.RestartAlt, contentDescription = null)
         Spacer(modifier = Modifier.width(8.dp))
         Text("Reset All Settings to Defaults")
+    }
+}
+
+@Composable
+private fun MetadataSettingsSection(
+    settings: AppSettings,
+    viewModel: SettingsViewModel
+) {
+    var showTraktDialog by remember { mutableStateOf(false) }
+    var showTvdbDialog by remember { mutableStateOf(false) }
+    var tempTraktId by remember(settings.traktClientId) { mutableStateOf(settings.traktClientId) }
+    var tempTvdbKey by remember(settings.tvdbApiKey) { mutableStateOf(settings.tvdbApiKey) }
+
+    Text(
+        text = "Metadata & EPG Integrations",
+        style = MaterialTheme.typography.titleMedium,
+        fontWeight = FontWeight.Bold,
+        color = MaterialTheme.colorScheme.primary
+    )
+
+    // Summary Card
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            modifier = Modifier.padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(28.dp)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Text(
+                text = "When an EPG is loaded with the playlist, programme titles are automatically matched with IMDb, Trakt, sratim.co.il, and TheTVDB to display posters, localized plot descriptions, ratings, and trailers.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+        }
+    }
+
+    // Inline Badges Toggle
+    SettingToggleCard(
+        icon = Icons.Default.Label,
+        title = "Show Source Icon Inline",
+        description = "Display IMDb, Trakt, sratim.co.il, or TheTVDB badge inline next to the programme name. Tap the badge to view the details split window.",
+        checked = settings.showInlineMetadataBadge,
+        onCheckedChange = { viewModel.toggleInlineMetadataBadge(it) }
+    )
+
+    // Preferred Source Selector
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Preferred Metadata Source",
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = "Priority source for initial lookup. All sources remain accessible via tabs in the details window.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                com.iptv.app.core.metadata.MetadataSource.entries.forEach { src ->
+                    FilterChip(
+                        selected = settings.preferredMetadataSource == src,
+                        onClick = { viewModel.setPreferredMetadataSource(src) },
+                        label = { Text(src.displayName) }
+                    )
+                }
+            }
+        }
+    }
+
+    // Preferred Description Language Selector
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Text(
+                text = "Description Language",
+                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodyLarge
+            )
+            Text(
+                text = "Preferred language for plot overviews, synopses, and genre tags.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                AppSettings.METADATA_LANGUAGE_OPTIONS.forEach { (code, label) ->
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { viewModel.setMetadataLanguage(code) }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        RadioButton(
+                            selected = settings.metadataLanguage == code,
+                            onClick = { viewModel.setMetadataLanguage(code) }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(text = label, style = MaterialTheme.typography.bodyMedium)
+                    }
+                }
+            }
+        }
+    }
+
+    // Trakt Client ID
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                tempTraktId = settings.traktClientId
+                showTraktDialog = true
+            }
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.Key, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "Trakt Client ID", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = if (settings.traktClientId.isNotBlank()) "Configured (${settings.traktClientId.take(8)}...)" else "Using default public demo client",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    // TheTVDB API Key
+    Card(
+        shape = RoundedCornerShape(14.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable {
+                tempTvdbKey = settings.tvdbApiKey
+                showTvdbDialog = true
+            }
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Icon(Icons.Default.VpnKey, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+            Spacer(modifier = Modifier.width(12.dp))
+            Column(modifier = Modifier.weight(1f)) {
+                Text(text = "TheTVDB API Key", fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
+                Text(
+                    text = if (settings.tvdbApiKey.isNotBlank()) "Configured (${settings.tvdbApiKey.take(8)}...)" else "Using default project key",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Icon(Icons.Default.ChevronRight, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+
+    if (showTraktDialog) {
+        AlertDialog(
+            onDismissRequest = { showTraktDialog = false },
+            title = { Text("Trakt API Client ID") },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter your Trakt API Client ID (from trakt.tv/oauth/applications). Leave blank to use the built-in fallback.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = tempTraktId,
+                        onValueChange = { tempTraktId = it },
+                        label = { Text("Client ID") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.setTraktClientId(tempTraktId.trim())
+                    showTraktDialog = false
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTraktDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
+    }
+
+    if (showTvdbDialog) {
+        AlertDialog(
+            onDismissRequest = { showTvdbDialog = false },
+            title = { Text("TheTVDB v4 API Key") },
+            text = {
+                Column {
+                    Text(
+                        text = "Enter your TheTVDB Project API Key (from thetvdb.com). Leave blank to use the built-in fallback.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    OutlinedTextField(
+                        value = tempTvdbKey,
+                        onValueChange = { tempTvdbKey = it },
+                        label = { Text("API Key") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
+            },
+            confirmButton = {
+                Button(onClick = {
+                    viewModel.setTvdbApiKey(tempTvdbKey.trim())
+                    showTvdbDialog = false
+                }) {
+                    Text("Save")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTvdbDialog = false }) {
+                    Text("Cancel")
+                }
+            }
+        )
     }
 }
 

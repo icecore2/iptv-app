@@ -114,6 +114,7 @@ public struct MacMainSplitView: View {
                     showLogos: settingsViewModel.settings.showChannelLogos,
                     showEpg: settingsViewModel.settings.showEpgInList,
                     isFavorite: playlistViewModel.isFavorite(channelId: item.channel.id),
+                    showMetadataBadge: settingsViewModel.settings.showInlineMetadataBadge,
                     onSelect: {
                         selectedChannel = item.channel
                         playerViewModel.playChannel(
@@ -124,6 +125,9 @@ public struct MacMainSplitView: View {
                     },
                     onToggleFavorite: {
                         playlistViewModel.toggleFavorite(channelId: item.channel.id)
+                    },
+                    onOpenMetadata: { title in
+                        playlistViewModel.openMetadataDetails(title: title)
                     }
                 )
                 .tag(item.channel)
@@ -132,25 +136,40 @@ public struct MacMainSplitView: View {
         .searchable(text: $playlistViewModel.searchQuery, prompt: "Search channels...")
     }
 
-    // MARK: - Right Column: Player Detail
+    // MARK: - Right Column: Player Detail & Side Inspector
 
     private var playerDetailView: some View {
-        Group {
-            if playerViewModel.currentChannel != nil {
-                PlayerScreen(
-                    viewModel: playerViewModel,
-                    settingsViewModel: settingsViewModel,
-                    favoriteIds: playlistViewModel.favoriteIds,
-                    onToggleFavorite: { playlistViewModel.toggleFavorite(channelId: $0) },
-                    onBack: {},
-                    onOpenSettings: { showSettings = true }
+        HStack(spacing: 0) {
+            Group {
+                if playerViewModel.currentChannel != nil {
+                    PlayerScreen(
+                        viewModel: playerViewModel,
+                        settingsViewModel: settingsViewModel,
+                        favoriteIds: playlistViewModel.favoriteIds,
+                        onToggleFavorite: { playlistViewModel.toggleFavorite(channelId: $0) },
+                        onBack: {},
+                        onOpenSettings: { showSettings = true }
+                    )
+                } else {
+                    ContentUnavailableView(
+                        "No Channel Selected",
+                        systemImage: "tv",
+                        description: Text("Select a channel from the list to begin playback.")
+                    )
+                }
+            }
+
+            // Split inspector window for enriched programme details
+            if let metaItem = playlistViewModel.selectedMetadataItem {
+                Divider()
+                ProgrammeDetailsSplitView(
+                    rawTitle: metaItem.title,
+                    initialMetadata: metaItem.metadata,
+                    metadataRepository: playlistViewModel.metadataRepository,
+                    preferredLanguage: settingsViewModel.settings.metadataLanguage,
+                    onClose: { playlistViewModel.closeMetadataDetails() }
                 )
-            } else {
-                ContentUnavailableView(
-                    "No Channel Selected",
-                    systemImage: "tv",
-                    description: Text("Select a channel from the list to begin playback.")
-                )
+                .frame(width: 320)
             }
         }
     }

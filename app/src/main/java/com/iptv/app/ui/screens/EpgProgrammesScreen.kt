@@ -27,7 +27,13 @@ import com.iptv.app.core.matcher.CatchupResolver
 import com.iptv.app.core.model.ChannelWithEpg
 import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.core.model.M3uItem
+import com.iptv.app.core.metadata.MetadataSource
+import com.iptv.app.core.model.AppSettings
+import com.iptv.app.ui.components.ProgrammeDetailsBottomSheet
+import com.iptv.app.ui.components.ProgrammeDetailsSidePanel
+import com.iptv.app.ui.components.SourceBadge
 import com.iptv.app.ui.viewmodel.PlaylistViewModel
+import com.iptv.app.ui.viewmodel.SettingsViewModel
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
@@ -48,11 +54,16 @@ enum class EpgViewLayout {
 @Composable
 fun EpgProgrammesScreen(
     viewModel: PlaylistViewModel,
+    settingsViewModel: SettingsViewModel? = null,
     onPlayProgrammeVod: (EpgProgramme, M3uItem) -> Unit,
     onPlayChannelLive: (M3uItem) -> Unit,
     onBack: () -> Unit
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    val settings = settingsViewModel?.settings?.collectAsState()?.value ?: AppSettings()
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val isWideScreen = configuration.screenWidthDp >= 840
+    var selectedProgrammeForDetails by remember { mutableStateOf<Pair<EpgProgramme, M3uItem>?>(null) }
     val now = remember { System.currentTimeMillis() }
     val timeFormatter = remember {
         DateTimeFormatter.ofPattern("HH:mm").withZone(ZoneId.systemDefault())
@@ -244,9 +255,11 @@ fun EpgProgrammesScreen(
                 }
             }
 
-            // Content Area
-            if (channelsWithSchedules.isEmpty()) {
-                Box(
+            // Content Area (with wide-screen side panel split window support)
+            Row(modifier = Modifier.fillMaxWidth().weight(1f)) {
+                Box(modifier = Modifier.weight(1f).fillMaxHeight()) {
+                    if (channelsWithSchedules.isEmpty()) {
+                        Box(
                     modifier = Modifier
                         .fillMaxSize()
                         .padding(24.dp),
@@ -379,6 +392,9 @@ fun EpgProgrammesScreen(
                                             channel = channel,
                                             now = now,
                                             timeFormatter = timeFormatter,
+                                            showMetadataBadge = settings.showInlineMetadataBadge,
+                                            metadataSource = settings.preferredMetadataSource,
+                                            onProgrammeMetadataClick = { selectedProgrammeForDetails = prog to channel },
                                             onPlayVod = { onPlayProgrammeVod(prog, channel) },
                                             onPlayLive = { onPlayChannelLive(channel) }
                                         )
@@ -402,6 +418,9 @@ fun EpgProgrammesScreen(
                             channel = channel,
                             now = now,
                             timeFormatter = timeFormatter,
+                            showMetadataBadge = settings.showInlineMetadataBadge,
+                            metadataSource = settings.preferredMetadataSource,
+                            onProgrammeMetadataClick = { selectedProgrammeForDetails = prog to channel },
                             onPlayVod = { onPlayProgrammeVod(prog, channel) },
                             onPlayLive = { onPlayChannelLive(channel) }
                         )
@@ -409,7 +428,37 @@ fun EpgProgrammesScreen(
                 }
             }
         }
+
+        if (isWideScreen && selectedProgrammeForDetails != null) {
+            val (prog, ch) = selectedProgrammeForDetails!!
+            ProgrammeDetailsSidePanel(
+                programmeTitle = prog.title,
+                channelName = ch.name,
+                metadataRepository = viewModel.metadataRepository,
+                preferredLanguage = settings.metadataLanguage,
+                preferredSource = settings.preferredMetadataSource,
+                onPlayLive = { onPlayChannelLive(ch) },
+                onPlayVod = { onPlayProgrammeVod(prog, ch) },
+                onClose = { selectedProgrammeForDetails = null }
+            )
+        }
     }
+}
+}
+
+if (!isWideScreen && selectedProgrammeForDetails != null) {
+    val (prog, ch) = selectedProgrammeForDetails!!
+    ProgrammeDetailsBottomSheet(
+        programmeTitle = prog.title,
+        channelName = ch.name,
+        metadataRepository = viewModel.metadataRepository,
+        preferredLanguage = settings.metadataLanguage,
+        preferredSource = settings.preferredMetadataSource,
+        onPlayLive = { onPlayChannelLive(ch) },
+        onPlayVod = { onPlayProgrammeVod(prog, ch) },
+        onDismiss = { selectedProgrammeForDetails = null }
+    )
+}
 }
 
 @Composable
@@ -418,6 +467,9 @@ fun EpgProgrammeTimelineCard(
     channel: M3uItem,
     now: Long,
     timeFormatter: DateTimeFormatter,
+    showMetadataBadge: Boolean = false,
+    metadataSource: MetadataSource = MetadataSource.IMDB,
+    onProgrammeMetadataClick: (() -> Unit)? = null,
     onPlayVod: () -> Unit,
     onPlayLive: () -> Unit
 ) {
@@ -490,13 +542,25 @@ fun EpgProgrammeTimelineCard(
 
                 Spacer(modifier = Modifier.height(4.dp))
 
-                Text(
-                    text = programme.title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = programme.title,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (showMetadataBadge && onProgrammeMetadataClick != null) {
+                        SourceBadge(
+                            source = metadataSource,
+                            onClick = onProgrammeMetadataClick
+                        )
+                    }
+                }
 
                 if (!programme.category.isNullOrBlank()) {
                     Spacer(modifier = Modifier.height(2.dp))
@@ -572,6 +636,9 @@ fun EpgProgrammeFeedCard(
     channel: M3uItem,
     now: Long,
     timeFormatter: DateTimeFormatter,
+    showMetadataBadge: Boolean = false,
+    metadataSource: MetadataSource = MetadataSource.IMDB,
+    onProgrammeMetadataClick: (() -> Unit)? = null,
     onPlayVod: () -> Unit,
     onPlayLive: () -> Unit
 ) {
@@ -661,11 +728,23 @@ fun EpgProgrammeFeedCard(
 
             Spacer(modifier = Modifier.height(6.dp))
 
-            Text(
-                text = programme.title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = programme.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f, fill = false)
+                )
+                if (showMetadataBadge && onProgrammeMetadataClick != null) {
+                    SourceBadge(
+                        source = metadataSource,
+                        onClick = onProgrammeMetadataClick
+                    )
+                }
+            }
 
             if (!programme.description.isNullOrBlank()) {
                 Spacer(modifier = Modifier.height(4.dp))

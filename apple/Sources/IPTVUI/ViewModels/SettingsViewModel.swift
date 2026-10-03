@@ -101,6 +101,31 @@ public final class SettingsViewModel: ObservableObject {
         saveSettings { $0.showStreamInfoOverlay = enabled }
     }
 
+    public func setPreferredMetadataSource(_ source: MetadataSource) {
+        settings.preferredMetadataSource = source
+        saveSettings { $0.preferredMetadataSource = source }
+    }
+
+    public func setMetadataLanguage(_ language: String) {
+        settings.metadataLanguage = language
+        saveSettings { $0.metadataLanguage = language }
+    }
+
+    public func setTraktClientId(_ id: String) {
+        settings.traktClientId = id
+        saveSettings { $0.traktClientId = id }
+    }
+
+    public func setTvdbApiKey(_ key: String) {
+        settings.tvdbApiKey = key
+        saveSettings { $0.tvdbApiKey = key }
+    }
+
+    public func toggleShowInlineMetadataBadge(_ enabled: Bool) {
+        settings.showInlineMetadataBadge = enabled
+        saveSettings { $0.showInlineMetadataBadge = enabled }
+    }
+
     public func resetToDefaults() async {
         await settingsRepository.resetToDefaults()
         self.settings = AppSettings()

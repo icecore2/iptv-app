@@ -99,7 +99,61 @@ public struct SettingsScreen: View {
                     ))
                 }
 
-                // Section 3: Buffer Disk Cache & Storage Meter
+                // Section 3: Programme Metadata & EPG Enrichment
+                Section(header: Text("Programme Metadata & EPG Enrichment")) {
+                    Toggle("Show Inline Metadata Badge", isOn: Binding(
+                        get: { viewModel.settings.showInlineMetadataBadge },
+                        set: { viewModel.toggleShowInlineMetadataBadge($0) }
+                    ))
+
+                    Picker("Preferred Source", selection: Binding(
+                        get: { viewModel.settings.preferredMetadataSource },
+                        set: { viewModel.setPreferredMetadataSource($0) }
+                    )) {
+                        ForEach(MetadataSource.allCases) { src in
+                            Text(src.displayName).tag(src)
+                        }
+                    }
+
+                    Picker("Metadata Language", selection: Binding(
+                        get: { viewModel.settings.metadataLanguage },
+                        set: { viewModel.setMetadataLanguage($0) }
+                    )) {
+                        ForEach(AppSettings.metadataLanguageOptions, id: \.0) { code, name in
+                            Text(name).tag(code)
+                        }
+                    }
+
+                    HStack {
+                        Text("Trakt Client ID")
+                        Spacer()
+                        TextField("Default / Custom", text: Binding(
+                            get: { viewModel.settings.traktClientId },
+                            set: { viewModel.setTraktClientId($0) }
+                        ))
+                        .multilineTextAlignment(.trailing)
+                        .autocorrectionDisabled()
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                    }
+
+                    HStack {
+                        Text("TheTVDB API Key")
+                        Spacer()
+                        TextField("Default / Custom", text: Binding(
+                            get: { viewModel.settings.tvdbApiKey },
+                            set: { viewModel.setTvdbApiKey($0) }
+                        ))
+                        .multilineTextAlignment(.trailing)
+                        .autocorrectionDisabled()
+                        #if canImport(UIKit)
+                        .textInputAutocapitalization(.never)
+                        #endif
+                    }
+                }
+
+                // Section 4: Buffer Disk Cache & Storage Meter
                 Section(header: Text("Disk Cache & Storage")) {
                     StorageMeterCard(
                         usedBytes: viewModel.usedStorageBytes,

@@ -80,6 +80,7 @@ class PlayerViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
+    val metadataRepository: com.iptv.app.data.ProgrammeMetadataRepository = com.iptv.app.data.ProgrammeMetadataRepository()
     private var sleepTimerJob: Job? = null
 
     fun playChannel(channel: M3uItem, playlist: List<M3uItem>, matcher: EpgMatcher? = null) {

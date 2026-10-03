@@ -9,6 +9,7 @@ public struct EpgProgrammesScreen: View {
     public let onBack: () -> Void
 
     @State private var selectedChannelId: String? = nil
+    @State private var selectedMetadataTitle: String? = nil
 
     public init(
         viewModel: PlaylistViewModel,
@@ -103,8 +104,14 @@ public struct EpgProgrammesScreen: View {
                                     }
                                 }
 
-                                Text(prog.title)
-                                    .font(.headline)
+                                HStack(spacing: 6) {
+                                    Text(prog.title)
+                                        .font(.headline)
+
+                                    SourceBadgeView(source: .auto) {
+                                        selectedMetadataTitle = prog.title
+                                    }
+                                }
 
                                 if let desc = prog.descriptionText, !desc.isEmpty {
                                     Text(desc)
@@ -121,6 +128,18 @@ public struct EpgProgrammesScreen: View {
                     Text("Select a channel to view its programme guide.")
                         .foregroundStyle(.secondary)
                     Spacer()
+                }
+            }
+            .sheet(isPresented: Binding(
+                get: { selectedMetadataTitle != nil },
+                set: { if !$0 { selectedMetadataTitle = nil } }
+            )) {
+                if let title = selectedMetadataTitle {
+                    ProgrammeDetailsSplitView(
+                        rawTitle: title,
+                        metadataRepository: viewModel.metadataRepository,
+                        onClose: { selectedMetadataTitle = nil }
+                    )
                 }
             }
             .navigationTitle("TV Guide & Schedules")
