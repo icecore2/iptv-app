@@ -114,7 +114,7 @@ public struct EpgProgrammesScreen: View {
                             }
                             .padding(.vertical, 6)
                         }
-                        .listStyle(.insetGrouped)
+                        .adaptiveListStyle()
                     }
                 } else {
                     Spacer()

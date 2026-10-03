@@ -85,7 +85,7 @@ public struct PlaylistSwitcherSheet: View {
                     }
                 }
             }
-            .listStyle(.insetGrouped)
+            .adaptiveListStyle()
             .navigationTitle("Switch Playlist")
             .inlineTitleMode()
             .toolbar {

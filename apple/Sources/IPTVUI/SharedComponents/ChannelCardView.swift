@@ -77,7 +77,7 @@ public struct ChannelCardView: View {
 
                     ProgressView(value: item.progress)
                         .progressViewStyle(.linear)
-                        .tint(.accentColor)
+                        .tint(Color.accentColor)
                         .scaleEffect(y: 0.6)
                 } else {
                     Text(item.channel.group)
@@ -136,7 +136,7 @@ public struct ChannelCardView: View {
 
                 ProgressView(value: item.progress)
                     .progressViewStyle(.linear)
-                    .tint(.accentColor)
+                    .tint(Color.accentColor)
                     .scaleEffect(y: 0.5)
             } else {
                 Text(item.channel.group)

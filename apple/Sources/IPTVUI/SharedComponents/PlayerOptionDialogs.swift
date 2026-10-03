@@ -120,7 +120,7 @@ public struct SleepTimerDialog: View {
             if let remaining = currentRemainingMinutes {
                 Text("\(remaining) min remaining")
                     .font(.subheadline)
-                    .foregroundStyle(.accentColor)
+                    .foregroundStyle(Color.accentColor)
 
                 Button("Turn Off Sleep Timer", role: .destructive) {
                     onCancelTimer()

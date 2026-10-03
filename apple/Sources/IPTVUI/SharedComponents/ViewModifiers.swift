@@ -10,4 +10,14 @@ extension View {
         self
         #endif
     }
+
+    /// Applies insetGrouped list style on iOS and inset on macOS.
+    @ViewBuilder
+    public func adaptiveListStyle() -> some View {
+        #if os(iOS)
+        self.listStyle(.insetGrouped)
+        #else
+        self.listStyle(.inset)
+        #endif
+    }
 }

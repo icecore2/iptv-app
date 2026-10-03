@@ -43,7 +43,7 @@ public struct StorageMeterCard: View {
             }
 
             ProgressView(value: usedRatio)
-                .tint(usedRatio > 0.85 ? .red : .accentColor)
+                .tint(usedRatio > 0.85 ? Color.red : Color.accentColor)
 
             HStack {
                 Text("Used: \(formatBytes(usedBytes)) / \(limitMb) MB Limit")

@@ -36,10 +36,11 @@ public struct EpgScheduleSheet: View {
                     List(schedule) { programme in
                         programmeRow(programme)
                     }
-                    .listStyle(.insetGrouped)
+                    .adaptiveListStyle()
                 }
             }
             .navigationTitle(channel.name)
+            .inlineTitleMode()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Done", action: onDismiss)
@@ -56,7 +57,7 @@ public struct EpgScheduleSheet: View {
             HStack {
                 Text(formatTimeRange(start: programme.startEpochMillis, stop: programme.stopEpochMillis))
                     .font(.caption.bold())
-                    .foregroundStyle(isLive ? .accentColor : .secondary)
+                    .foregroundStyle(isLive ? Color.accentColor : Color.secondary)
 
                 if isLive {
                     Text("LIVE NOW")
