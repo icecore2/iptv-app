@@ -8,11 +8,11 @@ public final class EpgMatcher: Sendable {
     private let normalizedChannelIndex: [String: String]
 
     private static let bracketsRegex: NSRegularExpression? = {
-        try? NSRegularExpression(pattern: #"\\[.*?\\]|\\(.*?\\)"#, options: [])
+        try? NSRegularExpression(pattern: #"\[.*?\]|\(.*?\)"#, options: [])
     }()
 
     private static let qualityRegex: NSRegularExpression? = {
-        try? NSRegularExpression(pattern: #"\\b(hd|fhd|uhd|4k|sd|hevc|1080p|720p)\\b"#, options: [.caseInsensitive])
+        try? NSRegularExpression(pattern: #"\b(hd|fhd|uhd|4k|sd|hevc|1080p|720p)\b"#, options: [.caseInsensitive])
     }()
 
     private static let punctuationRegex: NSRegularExpression? = {
