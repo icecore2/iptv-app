@@ -74,7 +74,7 @@ final class ProgrammeMetadataTests: XCTestCase {
         )
 
         let data = try JSONEncoder().encode(original)
-        let decoded = try JSONDecoder().decode(ProgrammeMetadata.self, data: data)
+        let decoded = try JSONDecoder().decode(ProgrammeMetadata.self, from: data)
 
         XCTAssertEqual(decoded.id, original.id)
         XCTAssertEqual(decoded.title, original.title)
