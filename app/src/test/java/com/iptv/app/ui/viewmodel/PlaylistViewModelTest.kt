@@ -257,6 +257,13 @@ class PlaylistViewModelTest {
         assertEquals(2, recents.size)
         assertEquals(ch2.id, recents[0].id) // Most recent first
         assertEquals(ch1.id, recents[1].id)
+
+        // Re-adding ch1 brings it to the top
+        viewModel.addRecentChannel(ch1)
+        val recentsUpdated = viewModel.uiState.value.recentChannels
+        assertEquals(2, recentsUpdated.size)
+        assertEquals(ch1.id, recentsUpdated[0].id)
+        assertEquals(ch2.id, recentsUpdated[1].id)
     }
 
     @Test

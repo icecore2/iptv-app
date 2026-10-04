@@ -5,6 +5,7 @@ import com.iptv.app.core.model.EpgChannel
 import com.iptv.app.core.model.EpgData
 import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.core.model.M3uItem
+import android.graphics.Bitmap
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -303,5 +304,50 @@ class PlayerViewModelTest {
         // Repeated lookups within Show B hit the cache
         val fourth = vm.getProgrammeAtTime(2900L)
         assertEquals(third, fourth)
+    }
+
+    private fun createTestBitmap(): Bitmap {
+        val field = sun.misc.Unsafe::class.java.getDeclaredField("theUnsafe")
+        field.isAccessible = true
+        val unsafe = field.get(null) as sun.misc.Unsafe
+        return unsafe.allocateInstance(Bitmap::class.java) as Bitmap
+    }
+
+    @Test
+    fun testSaveAndGetChannelThumbnail() {
+        val vm = PlayerViewModel()
+        val dummyBitmap = createTestBitmap()
+
+        vm.saveChannelThumbnail("ch1", dummyBitmap)
+
+        assertEquals(dummyBitmap, vm.getChannelThumbnail("ch1"))
+        assertEquals(1, vm.channelThumbnails.value.size)
+        assertTrue(vm.channelThumbnails.value.containsKey("ch1"))
+    }
+
+    @Test
+    fun testChannelThumbnails_cappedAt20() {
+        val vm = PlayerViewModel()
+        for (i in 1..25) {
+            val bmp = createTestBitmap()
+            vm.saveChannelThumbnail("channel_$i", bmp)
+        }
+
+        val map = vm.channelThumbnails.value
+        assertEquals(20, map.size)
+        // Earliest entries should have been removed
+        assertFalse(map.containsKey("channel_1"))
+        assertTrue(map.containsKey("channel_25"))
+    }
+
+    @Test
+    fun testPlayChannel_gracefullyHandlesSwitchFrameCapture() {
+        val vm = PlayerViewModel()
+        vm.playChannel(channels[0], channels, matcher)
+        assertEquals("Channel 1", vm.uiState.value.currentChannel?.name)
+
+        // Switching channel without active PlayerView doesn't crash
+        vm.playChannel(channels[1], channels, matcher)
+        assertEquals("Channel 2", vm.uiState.value.currentChannel?.name)
     }
 }

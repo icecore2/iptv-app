@@ -111,8 +111,11 @@ fun IptvAppNavigation(
             val rawChannels = playlistState.channels.map { it.channel }
             ChannelListScreen(
                 viewModel = playlistViewModel,
+                playerViewModel = playerViewModel,
                 settingsViewModel = settingsViewModel,
                 onChannelSelected = { channel, channels ->
+                    playerViewModel.captureAndSaveCurrentFrame()
+                    playlistViewModel.addRecentChannel(channel)
                     playerViewModel.playChannel(
                         channel = channel,
                         playlist = channels,
@@ -124,6 +127,8 @@ fun IptvAppNavigation(
                     navController.navigate("epg")
                 },
                 onPlayProgrammeVod = { programme, channel ->
+                    playerViewModel.captureAndSaveCurrentFrame()
+                    playlistViewModel.addRecentChannel(channel)
                     playerViewModel.playProgrammeVod(
                         programme = programme,
                         channel = channel,
@@ -133,6 +138,7 @@ fun IptvAppNavigation(
                     navController.navigate("player")
                 },
                 onChangePlaylist = {
+                    playerViewModel.stopPlayback()
                     playlistViewModel.clearPlaylist()
                     navController.navigate("input") {
                         popUpTo("channels") { inclusive = true }
@@ -150,6 +156,8 @@ fun IptvAppNavigation(
                 viewModel = playlistViewModel,
                 settingsViewModel = settingsViewModel,
                 onPlayProgrammeVod = { programme, channel ->
+                    playerViewModel.captureAndSaveCurrentFrame()
+                    playlistViewModel.addRecentChannel(channel)
                     playerViewModel.playProgrammeVod(
                         programme = programme,
                         channel = channel,
@@ -159,6 +167,8 @@ fun IptvAppNavigation(
                     navController.navigate("player")
                 },
                 onPlayChannelLive = { channel ->
+                    playerViewModel.captureAndSaveCurrentFrame()
+                    playlistViewModel.addRecentChannel(channel)
                     playerViewModel.playChannel(
                         channel = channel,
                         playlist = rawChannels,
@@ -176,9 +186,13 @@ fun IptvAppNavigation(
             PlayerScreen(
                 viewModel = playerViewModel,
                 settingsViewModel = settingsViewModel,
+                playlistViewModel = playlistViewModel,
                 favoriteIds = playlistState.favoriteIds,
                 onToggleFavorite = { playlistViewModel.toggleFavorite(it) },
                 onBack = {
+                    playerViewModel.uiState.value.currentChannel?.let { cur ->
+                        playlistViewModel.addRecentChannel(cur)
+                    }
                     navController.popBackStack()
                 },
                 onOpenSettings = {

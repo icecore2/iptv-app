@@ -1,8 +1,10 @@
 package com.iptv.app.ui.screens
 
+import android.view.LayoutInflater
 import android.view.ViewGroup
 import android.widget.FrameLayout
-import androidx.annotation.OptIn
+import com.iptv.app.R
+import com.iptv.app.ui.viewmodel.PlaylistViewModel
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -70,11 +72,11 @@ import com.iptv.app.ui.components.ProgrammeDetailsBottomSheet
 import com.iptv.app.ui.components.SourceBadge
 import java.util.Locale
 
-@OptIn(UnstableApi::class)
 @Composable
 fun PlayerScreen(
     viewModel: PlayerViewModel,
     settingsViewModel: SettingsViewModel? = null,
+    playlistViewModel: PlaylistViewModel? = null,
     favoriteIds: Set<String> = emptySet(),
     onToggleFavorite: (String) -> Unit = {},
     onBack: () -> Unit,
@@ -84,6 +86,12 @@ fun PlayerScreen(
     val uiState by viewModel.uiState.collectAsState()
     val channel = uiState.currentChannel
     val settings = settingsViewModel?.settings?.collectAsState()?.value ?: AppSettings()
+
+    LaunchedEffect(channel?.id) {
+        if (channel != null) {
+            playlistViewModel?.addRecentChannel(channel)
+        }
+    }
 
     var showPlayerSettingsSheet by remember { mutableStateOf(false) }
     var selectedMetadataProgramme by remember { mutableStateOf<EpgProgramme?>(null) }
@@ -119,32 +127,11 @@ fun PlayerScreen(
         }
     }
 
-    // ExoPlayer instance lifecycle with custom buffer control and time-shift disk caching
+    // ExoPlayer instance managed by PlayerViewModel so it survives navigating back to channels
     val bufferSeconds = settings.bufferDurationSeconds
     val storageLimitMb = settings.bufferStorageLimitMb
     val exoPlayer = remember(bufferSeconds, storageLimitMb) {
-        val loadControl = DefaultLoadControl.Builder()
-            .setBufferDurationsMs(
-                /* minBufferMs = */ (bufferSeconds * 1000).coerceAtLeast(2000),
-                /* maxBufferMs = */ (bufferSeconds * 2000).coerceAtLeast(5000),
-                /* bufferForPlaybackMs = */ (bufferSeconds * 250).coerceIn(1000, 3000),
-                /* bufferForPlaybackAfterRebufferMs = */ (bufferSeconds * 500).coerceIn(1500, 5000)
-            )
-            .setBackBuffer(
-                /* backBufferDurationMs = */ 3_600_000, // Retain up to 1 hour back-buffer for time-shifting
-                /* retainBackBufferFromKeyframe = */ true
-            )
-            .build()
-
-        val mediaSourceFactory = DefaultMediaSourceFactory(context)
-            .setDataSourceFactory(PlaybackCacheManager.createDataSourceFactory(context, storageLimitMb))
-
-        ExoPlayer.Builder(context)
-            .setMediaSourceFactory(mediaSourceFactory)
-            .setLoadControl(loadControl)
-            .build().apply {
-                playWhenReady = true
-            }
+        viewModel.getOrCreatePlayer(context, bufferSeconds, storageLimitMb)
     }
 
     // Connect speed changes to player
@@ -230,17 +217,21 @@ fun PlayerScreen(
 
         onDispose {
             exoPlayer.removeListener(listener)
-            exoPlayer.release()
+            // Note: exoPlayer is managed by PlayerViewModel so it keeps streaming
+            // in the small square on ChannelListScreen.
         }
     }
 
-    // Load stream when current channel changes
+    // Load stream when current channel changes if not already playing
     LaunchedEffect(channel?.streamUrl) {
         if (channel != null && channel.streamUrl.isNotBlank()) {
-            val mediaItem = MediaItem.fromUri(channel.streamUrl)
-            exoPlayer.setMediaItem(mediaItem)
-            exoPlayer.prepare()
-            exoPlayer.play()
+            val currentUri = exoPlayer.currentMediaItem?.localConfiguration?.uri?.toString()
+            if (currentUri != channel.streamUrl) {
+                val mediaItem = MediaItem.fromUri(channel.streamUrl)
+                exoPlayer.setMediaItem(mediaItem)
+                exoPlayer.prepare()
+                exoPlayer.play()
+            }
         }
     }
 
@@ -334,20 +325,34 @@ fun PlayerScreen(
                 }
             }
     ) {
-        // ExoPlayer View
+        // ExoPlayer View (TextureView backed for frame capture and clean Compose interop)
+        var fullPlayerViewRef by remember { mutableStateOf<PlayerView?>(null) }
+        DisposableEffect(fullPlayerViewRef) {
+            onDispose {
+                fullPlayerViewRef?.let { pv ->
+                    viewModel.unregisterPlayerView(pv)
+                    pv.player = null
+                }
+            }
+        }
+
         AndroidView(
             factory = { ctx ->
-                PlayerView(ctx).apply {
-                    player = exoPlayer
-                    useController = false
-                    this.resizeMode = resizeMode
-                    layoutParams = FrameLayout.LayoutParams(
-                        ViewGroup.LayoutParams.MATCH_PARENT,
-                        ViewGroup.LayoutParams.MATCH_PARENT
-                    )
-                }
+                val pv = LayoutInflater.from(ctx).inflate(R.layout.view_texture_player, null) as PlayerView
+                pv.player = exoPlayer
+                pv.resizeMode = resizeMode
+                pv.layoutParams = FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.MATCH_PARENT,
+                    ViewGroup.LayoutParams.MATCH_PARENT
+                )
+                viewModel.registerPlayerView(pv)
+                fullPlayerViewRef = pv
+                pv
             },
             update = { playerView ->
+                if (playerView.player != exoPlayer) {
+                    playerView.player = exoPlayer
+                }
                 playerView.resizeMode = resizeMode
             },
             modifier = Modifier.fillMaxSize()

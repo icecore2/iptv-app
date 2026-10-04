@@ -1,12 +1,26 @@
 package com.iptv.app.ui.viewmodel
 
+import android.content.Context
+import android.graphics.Bitmap
+import android.view.TextureView
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.PlaybackParameters
+import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.PlayerView
 import com.iptv.app.core.matcher.CatchupResolver
 import com.iptv.app.core.matcher.EpgMatcher
 import com.iptv.app.core.model.ChannelWithEpg
 import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.core.model.M3uItem
+import com.iptv.app.data.PlaybackCacheManager
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -14,6 +28,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import java.lang.ref.WeakReference
 
 enum class AspectRatioMode {
     FIT,   // Letterbox / Pillarbox
@@ -80,10 +95,177 @@ class PlayerViewModel : ViewModel() {
     private val _uiState = MutableStateFlow(PlayerUiState())
     val uiState: StateFlow<PlayerUiState> = _uiState.asStateFlow()
 
+    private val _channelThumbnails = MutableStateFlow<Map<String, Bitmap>>(emptyMap())
+    val channelThumbnails: StateFlow<Map<String, Bitmap>> = _channelThumbnails.asStateFlow()
+
+    private var activePlayerView: WeakReference<PlayerView>? = null
+    private var exoPlayer: ExoPlayer? = null
+
     val metadataRepository: com.iptv.app.data.ProgrammeMetadataRepository = com.iptv.app.data.ProgrammeMetadataRepository()
     private var sleepTimerJob: Job? = null
 
+    fun registerPlayerView(playerView: PlayerView) {
+        activePlayerView = WeakReference(playerView)
+    }
+
+    fun unregisterPlayerView(playerView: PlayerView) {
+        if (activePlayerView?.get() == playerView) {
+            activePlayerView = null
+        }
+    }
+
+    fun saveChannelThumbnail(channelId: String, bitmap: Bitmap) {
+        _channelThumbnails.update { current ->
+            val updated = current.toMutableMap()
+            if (updated.size >= 20 && !updated.containsKey(channelId)) {
+                val oldestKey = updated.keys.firstOrNull()
+                if (oldestKey != null) {
+                    updated.remove(oldestKey)
+                }
+            }
+            updated[channelId] = bitmap
+            updated
+        }
+    }
+
+    fun getChannelThumbnail(channelId: String): Bitmap? {
+        return _channelThumbnails.value[channelId]
+    }
+
+    fun captureCurrentFrame(): Bitmap? {
+        val playerView = activePlayerView?.get() ?: return null
+        val surfaceView = playerView.videoSurfaceView
+        if (surfaceView is TextureView) {
+            val w = surfaceView.width
+            val h = surfaceView.height
+            if (w > 0 && h > 0) {
+                return surfaceView.getBitmap(w, h)
+            }
+        }
+        return null
+    }
+
+    fun scaleThumbnail(bitmap: Bitmap, maxDimension: Int = 320): Bitmap {
+        val width = bitmap.width
+        val height = bitmap.height
+        if (width <= 0 || height <= 0 || (width <= maxDimension && height <= maxDimension)) return bitmap
+        val ratio = width.toFloat() / height.toFloat()
+        val targetWidth: Int
+        val targetHeight: Int
+        if (width > height) {
+            targetWidth = maxDimension
+            targetHeight = (maxDimension / ratio).toInt().coerceAtLeast(1)
+        } else {
+            targetHeight = maxDimension
+            targetWidth = (maxDimension * ratio).toInt().coerceAtLeast(1)
+        }
+        return Bitmap.createScaledBitmap(bitmap, targetWidth, targetHeight, true)
+    }
+
+    fun captureAndSaveCurrentFrame() {
+        val current = _uiState.value.currentChannel ?: return
+        val bitmap = captureCurrentFrame() ?: return
+        val scaled = scaleThumbnail(bitmap)
+        saveChannelThumbnail(current.id, scaled)
+    }
+
+    fun getOrCreatePlayer(
+        context: Context,
+        bufferDurationSeconds: Int = 5,
+        bufferStorageLimitMb: Int = 100
+    ): ExoPlayer {
+        exoPlayer?.let { return it }
+
+        val appContext = context.applicationContext
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                (bufferDurationSeconds * 1000).coerceAtLeast(2000),
+                (bufferDurationSeconds * 2000).coerceAtLeast(5000),
+                (bufferDurationSeconds * 250).coerceIn(1000, 3000),
+                (bufferDurationSeconds * 500).coerceIn(1500, 5000)
+            )
+            .setBackBuffer(3_600_000, true)
+            .build()
+
+        val mediaSourceFactory = DefaultMediaSourceFactory(appContext)
+            .setDataSourceFactory(PlaybackCacheManager.createDataSourceFactory(appContext, bufferStorageLimitMb))
+
+        val player = ExoPlayer.Builder(appContext)
+            .setMediaSourceFactory(mediaSourceFactory)
+            .setLoadControl(loadControl)
+            .build().apply {
+                playWhenReady = true
+                volume = if (_uiState.value.isMuted) 0f else 1f
+                playbackParameters = PlaybackParameters(_uiState.value.playbackSpeed)
+            }
+
+        attachPlayerListener(player)
+        exoPlayer = player
+
+        // If a channel is already selected, start playback on new player
+        val cur = _uiState.value.currentChannel
+        if (cur != null && cur.streamUrl.isNotBlank()) {
+            val mediaItem = MediaItem.fromUri(cur.streamUrl)
+            player.setMediaItem(mediaItem)
+            player.prepare()
+            player.play()
+        }
+
+        return player
+    }
+
+    fun getPlayer(): ExoPlayer? = exoPlayer
+
+    private fun attachPlayerListener(player: ExoPlayer) {
+        player.addListener(object : Player.Listener {
+            override fun onPlaybackStateChanged(playbackState: Int) {
+                when (playbackState) {
+                    Player.STATE_BUFFERING -> setBuffering(true)
+                    Player.STATE_READY -> {
+                        setBuffering(false)
+                        setError(null)
+                    }
+                    Player.STATE_ENDED -> setPlaying(false)
+                    Player.STATE_IDLE -> {}
+                }
+            }
+
+            override fun onIsPlayingChanged(isPlaying: Boolean) {
+                setPlaying(isPlaying)
+            }
+
+            override fun onPlayerError(error: PlaybackException) {
+                setError("Playback error: ${error.message ?: "Stream unavailable"}")
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                val currentInfo = _uiState.value.streamInfo
+                val resolutionStr = if (videoSize.width > 0 && videoSize.height > 0) {
+                    val qualityLabel = when {
+                        videoSize.height >= 2160 -> " (4K UHD)"
+                        videoSize.height >= 1080 -> " (Full HD)"
+                        videoSize.height >= 720 -> " (HD)"
+                        else -> " (SD)"
+                    }
+                    "${videoSize.width}x${videoSize.height}$qualityLabel"
+                } else currentInfo.resolution
+
+                updateStreamInfo(
+                    currentInfo.copy(
+                        resolution = resolutionStr,
+                        bufferPercentage = player.bufferedPercentage
+                    )
+                )
+            }
+        })
+    }
+
     fun playChannel(channel: M3uItem, playlist: List<M3uItem>, matcher: EpgMatcher? = null) {
+        // Capture frame of current channel before switching
+        if (_uiState.value.currentChannel != null && _uiState.value.currentChannel?.id != channel.id) {
+            captureAndSaveCurrentFrame()
+        }
+
         val enriched = matcher?.enrichChannel(channel) ?: ChannelWithEpg(channel)
         val format = when {
             channel.streamUrl.endsWith(".m3u8", ignoreCase = true) -> "HLS (.m3u8)"
@@ -120,6 +302,20 @@ class PlayerViewModel : ViewModel() {
                 )
             )
         }
+
+        exoPlayer?.let { player ->
+            if (channel.streamUrl.isNotBlank()) {
+                val currentUri = player.currentMediaItem?.localConfiguration?.uri?.toString()
+                if (currentUri != channel.streamUrl) {
+                    val mediaItem = MediaItem.fromUri(channel.streamUrl)
+                    player.setMediaItem(mediaItem)
+                    player.prepare()
+                    player.play()
+                } else if (!player.isPlaying) {
+                    player.play()
+                }
+            }
+        }
     }
 
     fun playProgrammeVod(
@@ -128,6 +324,10 @@ class PlayerViewModel : ViewModel() {
         playlist: List<M3uItem> = emptyList(),
         matcher: EpgMatcher? = null
     ) {
+        if (_uiState.value.currentChannel != null) {
+            captureAndSaveCurrentFrame()
+        }
+
         val vodUrl = CatchupResolver.buildVodUrl(channel, programme)
         val vodItem = M3uItem(
             id = "${channel.id}_vod_${programme.startEpochMillis}",
@@ -179,6 +379,15 @@ class PlayerViewModel : ViewModel() {
                     streamUrl = vodUrl
                 )
             )
+        }
+
+        exoPlayer?.let { player ->
+            if (vodUrl.isNotBlank()) {
+                val mediaItem = MediaItem.fromUri(vodUrl)
+                player.setMediaItem(mediaItem)
+                player.prepare()
+                player.play()
+            }
         }
     }
 
@@ -300,11 +509,19 @@ class PlayerViewModel : ViewModel() {
     }
 
     fun toggleMute() {
-        _uiState.update { it.copy(isMuted = !it.isMuted) }
+        val newMuted = !_uiState.value.isMuted
+        _uiState.update { it.copy(isMuted = newMuted) }
+        exoPlayer?.volume = if (newMuted) 0f else 1f
+    }
+
+    fun setMuted(muted: Boolean) {
+        _uiState.update { it.copy(isMuted = muted) }
+        exoPlayer?.volume = if (muted) 0f else 1f
     }
 
     fun setPlaybackSpeed(speed: Float) {
         _uiState.update { it.copy(playbackSpeed = speed) }
+        exoPlayer?.playbackParameters = PlaybackParameters(speed)
     }
 
     fun updateStreamInfo(info: StreamInfo) {
@@ -351,5 +568,16 @@ class PlayerViewModel : ViewModel() {
 
     fun setSleepTimerDialogVisible(visible: Boolean) {
         _uiState.update { it.copy(isSleepTimerDialogVisible = visible) }
+    }
+
+    fun stopPlayback() {
+        exoPlayer?.stop()
+        _uiState.update { it.copy(isPlaying = false, isBuffering = false) }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        exoPlayer?.release()
+        exoPlayer = null
     }
 }

@@ -1,0 +1,104 @@
+name: Tests
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  # -------------------------------------------------------------
+  # 1. Android Unit Tests
+  # -------------------------------------------------------------
+  test-android:
+    name: Android Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v6
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: 'gradle'
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Run Android Unit Tests
+        run: ./gradlew testDebugUnitTest --continue
+
+      - name: Publish Android Test Summary
+        if: always()
+        run: |
+          echo "### 📱 Android Unit Tests" >> $GITHUB_STEP_SUMMARY
+          if [ -d "app/build/test-results/testDebugUnitTest" ]; then
+            TOTAL_TESTS=$(grep -h "tests=" app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | sed -n 's/.*tests="\([0-9]*\)".*/\1/p' | awk '{s+=$1} END {print s}')
+            FAILURES=$(grep -h "failures=" app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | sed -n 's/.*failures="\([0-9]*\)".*/\1/p' | awk '{s+=$1} END {print s}')
+            ERRORS=$(grep -h "errors=" app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | sed -n 's/.*errors="\([0-9]*\)".*/\1/p' | awk '{s+=$1} END {print s}')
+            SKIPPED=$(grep -h "skipped=" app/build/test-results/testDebugUnitTest/*.xml 2>/dev/null | sed -n 's/.*skipped="\([0-9]*\)".*/\1/p' | awk '{s+=$1} END {print s}')
+            
+            echo "| Status | Total Tests | Failures | Errors | Skipped |" >> $GITHUB_STEP_SUMMARY
+            echo "|---|---|---|---|---|" >> $GITHUB_STEP_SUMMARY
+            if [ "$FAILURES" = "0" ] && [ "$ERRORS" = "0" ]; then
+              echo "| ✅ Passed | ${TOTAL_TESTS:-0} | ${FAILURES:-0} | ${ERRORS:-0} | ${SKIPPED:-0} |" >> $GITHUB_STEP_SUMMARY
+            else
+              echo "| ❌ Failed | ${TOTAL_TESTS:-0} | ${FAILURES:-0} | ${ERRORS:-0} | ${SKIPPED:-0} |" >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "No test results directory found." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Android Test Results
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: android-test-results
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/test-results/testDebugUnitTest/
+          retention-days: 14
+
+  # -------------------------------------------------------------
+  # 2. Apple / macOS & iOS Swift Unit Tests
+  # -------------------------------------------------------------
+  test-apple:
+    name: Apple Swift Unit Tests
+    runs-on: macos-14
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v7
+
+      - name: Run Swift Unit Tests
+        run: |
+          cd apple
+          swift test -v 2>&1 | tee ../swift-test.log
+
+      - name: Publish Swift Test Summary
+        if: always()
+        run: |
+          echo "### 🍎 Apple Swift Tests" >> $GITHUB_STEP_SUMMARY
+          if grep -q "Executed [0-9]* test.*with 0 failures" swift-test.log 2>/dev/null; then
+            SUMMARY_LINE=$(grep "Executed [0-9]* test" swift-test.log | tail -n 1)
+            echo "✅ **All Swift tests passed successfully:** $SUMMARY_LINE" >> $GITHUB_STEP_SUMMARY
+          elif [ -f "swift-test.log" ]; then
+            echo "⚠️ Swift tests completed. Inspect log for details or failures." >> $GITHUB_STEP_SUMMARY
+          fi
+
+      - name: Upload Swift Test Log
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: swift-test-log
+          path: swift-test.log
+          retention-days: 14

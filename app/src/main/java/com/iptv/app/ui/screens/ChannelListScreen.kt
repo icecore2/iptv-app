@@ -1,5 +1,9 @@
 package com.iptv.app.ui.screens
 
+import android.view.LayoutInflater
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -20,21 +24,28 @@ import androidx.compose.ui.Modifier
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.runtime.snapshotFlow
+import com.iptv.app.R
 import com.iptv.app.core.model.AppSettings
 import com.iptv.app.core.model.ChannelWithEpg
 import com.iptv.app.core.model.EpgProgramme
 import com.iptv.app.core.model.M3uItem
 import com.iptv.app.ui.viewmodel.ContentTypeFilter
+import com.iptv.app.ui.viewmodel.PlayerViewModel
 import com.iptv.app.ui.viewmodel.PlaylistViewModel
 import com.iptv.app.ui.viewmodel.SettingsViewModel
 import com.iptv.app.ui.viewmodel.ViewMode
@@ -47,6 +58,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 @Composable
 fun ChannelListScreen(
     viewModel: PlaylistViewModel,
+    playerViewModel: PlayerViewModel? = null,
     settingsViewModel: SettingsViewModel? = null,
     onChannelSelected: (M3uItem, List<M3uItem>) -> Unit,
     onOpenEpgGuide: () -> Unit = {},
@@ -56,6 +68,8 @@ fun ChannelListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val settings = settingsViewModel?.settings?.collectAsState()?.value ?: AppSettings()
+    val playerUiState = playerViewModel?.uiState?.collectAsState()?.value
+    val channelThumbnails = playerViewModel?.channelThumbnails?.collectAsState()?.value ?: emptyMap()
 
     var isSearchActive by remember { mutableStateOf(false) }
     var selectedChannelForEpg by remember { mutableStateOf<ChannelWithEpg?>(null) }
@@ -315,47 +329,197 @@ fun ChannelListScreen(
                         horizontalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         items(uiState.recentChannels, key = { "recent_" + it.id }) { ch ->
+                            val isCurrentStreaming = playerViewModel != null &&
+                                (playerUiState?.isPlaying == true || playerUiState?.isBuffering == true) &&
+                                playerUiState?.currentChannel?.id == ch.id
+                            val lastFrame = channelThumbnails[ch.id]
+
                             Card(
                                 shape = RoundedCornerShape(12.dp),
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant),
+                                border = if (isCurrentStreaming) BorderStroke(2.dp, MaterialTheme.colorScheme.primary) else null,
                                 modifier = Modifier
-                                    .width(130.dp)
+                                    .width(135.dp)
                                     .clickable {
-                                        viewModel.addRecentChannel(ch)
-                                        onChannelSelected(ch, rawChannels)
+                                        if (isCurrentStreaming) {
+                                            onChannelSelected(ch, rawChannels)
+                                        } else {
+                                            playerViewModel?.captureAndSaveCurrentFrame()
+                                            viewModel.addRecentChannel(ch)
+                                            onChannelSelected(ch, rawChannels)
+                                        }
                                     }
                             ) {
-                                Column(
-                                    modifier = Modifier.padding(8.dp),
-                                    horizontalAlignment = Alignment.CenterHorizontally
-                                ) {
-                                    if (!ch.logoUrl.isNullOrBlank()) {
-                                        AsyncImage(
-                                            model = ch.logoUrl,
-                                            contentDescription = ch.name,
-                                            modifier = Modifier
-                                                .size(40.dp)
-                                                .clip(RoundedCornerShape(6.dp)),
-                                            contentScale = ContentScale.Fit
-                                        )
-                                    } else {
-                                        Icon(
-                                            imageVector = if (ch.isVod) Icons.Default.Movie else Icons.Default.Tv,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(40.dp)
-                                        )
+                                Column {
+                                    // Small Square Preview Container (110dp)
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(110.dp)
+                                            .clip(RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp))
+                                            .background(Color.Black),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        if (isCurrentStreaming) {
+                                            var miniViewRef by remember { mutableStateOf<PlayerView?>(null) }
+                                            DisposableEffect(miniViewRef) {
+                                                onDispose {
+                                                    miniViewRef?.let { pv ->
+                                                        playerViewModel.unregisterPlayerView(pv)
+                                                        pv.player = null
+                                                    }
+                                                }
+                                            }
+                                            AndroidView(
+                                                factory = { ctx ->
+                                                    val pv = LayoutInflater.from(ctx).inflate(R.layout.view_texture_player, null) as PlayerView
+                                                    val p = playerViewModel.getOrCreatePlayer(
+                                                        ctx,
+                                                        settings.bufferDurationSeconds,
+                                                        settings.bufferStorageLimitMb
+                                                    )
+                                                    pv.player = p
+                                                    pv.resizeMode = AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                                                    playerViewModel.registerPlayerView(pv)
+                                                    miniViewRef = pv
+                                                    pv
+                                                },
+                                                update = { pv ->
+                                                    val p = playerViewModel.getPlayer()
+                                                    if (pv.player != p) {
+                                                        pv.player = p
+                                                    }
+                                                },
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+
+                                            // LIVE Pill Badge
+                                            Box(
+                                                modifier = Modifier
+                                                    .align(Alignment.TopEnd)
+                                                    .padding(6.dp)
+                                                    .background(Color(0xFFE53935), RoundedCornerShape(4.dp))
+                                                    .padding(horizontal = 5.dp, vertical = 2.dp)
+                                            ) {
+                                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(5.dp)
+                                                            .background(Color.White, CircleShape)
+                                                    )
+                                                    Spacer(modifier = Modifier.width(3.dp))
+                                                    Text(
+                                                        text = "LIVE",
+                                                        color = Color.White,
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            fontSize = 9.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    )
+                                                }
+                                            }
+
+                                            if (playerUiState?.isBuffering == true) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(Color.Black.copy(alpha = 0.35f)),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    CircularProgressIndicator(
+                                                        modifier = Modifier.size(22.dp),
+                                                        color = Color.White,
+                                                        strokeWidth = 2.dp
+                                                    )
+                                                }
+                                            }
+                                        } else if (lastFrame != null) {
+                                            // Last Frame Captured as Thumbnail Placeholder!
+                                            Image(
+                                                bitmap = lastFrame.asImageBitmap(),
+                                                contentDescription = ch.name,
+                                                modifier = Modifier.fillMaxSize(),
+                                                contentScale = ContentScale.Crop
+                                            )
+
+                                            // Play icon overlay
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(32.dp)
+                                                    .background(Color.Black.copy(alpha = 0.5f), CircleShape),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = null,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+
+                                            // If channel has logo, small logo badge in bottom-end
+                                            if (!ch.logoUrl.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = ch.logoUrl,
+                                                    contentDescription = null,
+                                                    modifier = Modifier
+                                                        .align(Alignment.BottomEnd)
+                                                        .padding(4.dp)
+                                                        .size(20.dp)
+                                                        .clip(RoundedCornerShape(3.dp))
+                                                        .background(Color.Black.copy(alpha = 0.6f)),
+                                                    contentScale = ContentScale.Fit
+                                                )
+                                            }
+                                        } else {
+                                            // Fallback Logo / Icon placeholder
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(MaterialTheme.colorScheme.surfaceVariant),
+                                                contentAlignment = Alignment.Center
+                                            ) {
+                                                if (!ch.logoUrl.isNullOrBlank()) {
+                                                    AsyncImage(
+                                                        model = ch.logoUrl,
+                                                        contentDescription = ch.name,
+                                                        modifier = Modifier
+                                                            .size(44.dp)
+                                                            .clip(RoundedCornerShape(6.dp)),
+                                                        contentScale = ContentScale.Fit
+                                                    )
+                                                } else {
+                                                    Icon(
+                                                        imageVector = if (ch.isVod) Icons.Default.Movie else Icons.Default.Tv,
+                                                        contentDescription = null,
+                                                        tint = MaterialTheme.colorScheme.primary,
+                                                        modifier = Modifier.size(44.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
 
-                                    Spacer(modifier = Modifier.height(6.dp))
-
-                                    Text(
-                                        text = ch.name,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
+                                    // Channel Info Below Square
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+                                    ) {
+                                        Text(
+                                            text = ch.name,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                        Text(
+                                            text = if (isCurrentStreaming) "Now Streaming" else ch.group,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = if (isCurrentStreaming) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            fontWeight = if (isCurrentStreaming) FontWeight.Bold else FontWeight.Normal,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
                             }
                         }
