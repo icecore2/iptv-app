@@ -73,12 +73,13 @@ jobs:
           cd apple
           swift build -c release -v
 
-      - name: Package macOS .app Bundle
+      - name: Package macOS .app Bundle and DMG Installer
         run: |
           cd apple
           mkdir -p IPTV.app/Contents/MacOS
           mkdir -p IPTV.app/Contents/Resources
           cp .build/release/IPTVApp IPTV.app/Contents/MacOS/
+          chmod +x IPTV.app/Contents/MacOS/IPTVApp
 
           cat << 'EOF' > IPTV.app/Contents/Info.plist
           <?xml version="1.0" encoding="UTF-8"?>
@@ -101,13 +102,23 @@ jobs:
           </plist>
           EOF
 
+          # Create zip archive of the app bundle
           zip -r ../iptv-app-macos.zip IPTV.app
 
-      - name: Upload macOS Application
+          # Create DMG Installer image with Applications drag-and-drop link
+          mkdir -p dmg_staging
+          cp -R IPTV.app dmg_staging/
+          ln -s /Applications dmg_staging/Applications
+          hdiutil create -volname "IPTV Player" -srcfolder dmg_staging -ov -format UDZO ../iptv-app-macos.dmg
+          rm -rf dmg_staging
+
+      - name: Upload macOS Application Artifacts
         uses: actions/upload-artifact@v4
         with:
           name: macos-app
-          path: iptv-app-macos.zip
+          path: |
+            iptv-app-macos.dmg
+            iptv-app-macos.zip
 
   # -------------------------------------------------------------
   # 3. Create GitHub Release with All Compiled Apps
@@ -126,7 +137,7 @@ jobs:
           name: android-apk
           path: release-assets
 
-      - name: Download macOS Artifact
+      - name: Download macOS Artifacts
         uses: actions/download-artifact@v4
         with:
           name: macos-app
@@ -154,7 +165,8 @@ jobs:
             Compiled binaries and application bundles for Android and macOS:
             
             - **Android APK**: `iptv-app-android-debug.apk` (Supports phones, tablets, Android TV)
-            - **macOS App**: `iptv-app-macos.zip` (Native Apple Silicon macOS 14+ Application)
+            - **macOS DMG Installer**: `iptv-app-macos.dmg` (Disk Image installer with Applications drag & drop for macOS 14+)
+            - **macOS App Bundle (ZIP)**: `iptv-app-macos.zip` (Direct portable .app bundle)
             
             ### Included Features:
             - M3U / M3U8 Playlist Parsing & Profile Management
@@ -167,6 +179,7 @@ jobs:
           prerelease: false
           files: |
             release-assets/iptv-app-android-debug.apk
+            release-assets/iptv-app-macos.dmg
             release-assets/iptv-app-macos.zip
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
