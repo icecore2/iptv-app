@@ -7,7 +7,9 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.LiveTv
@@ -265,6 +267,17 @@ fun PlaylistInputScreen(
                 onValueChange = { playlistName = it },
                 label = { Text("Playlist Name (Optional)") },
                 placeholder = { Text("e.g. My Cable, Sports TV") },
+                leadingIcon = {
+                    Icon(Icons.Default.Edit, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    if (playlistName.isNotBlank()) {
+                        IconButton(onClick = { playlistName = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -274,6 +287,17 @@ fun PlaylistInputScreen(
                 onValueChange = { playlistUrl = it },
                 label = { Text("M3U / M3U8 Playlist URL") },
                 placeholder = { Text("https://example.com/playlist.m3u") },
+                leadingIcon = {
+                    Icon(Icons.Default.LiveTv, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    if (playlistUrl.isNotBlank()) {
+                        IconButton(onClick = { playlistUrl = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
                 maxLines = 3
@@ -284,10 +308,39 @@ fun PlaylistInputScreen(
                 onValueChange = { epgUrl = it },
                 label = { Text("XMLTV EPG URL (.xml or .xml.gz - Optional)") },
                 placeholder = { Text("https://example.com/epg.xml.gz") },
+                leadingIcon = {
+                    Icon(Icons.Default.CalendarMonth, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                },
+                trailingIcon = {
+                    if (epgUrl.isNotBlank()) {
+                        IconButton(onClick = { epgUrl = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "Clear")
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = false,
                 maxLines = 3
             )
+
+            // Quick Fill Demo / Sample Data Chip
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Start
+            ) {
+                SuggestionChip(
+                    onClick = {
+                        playlistName = "Demo TV & VOD Streams"
+                        playlistUrl = SampleDataProvider.DEFAULT_SAMPLE_PLAYLIST_URL
+                        epgUrl = SampleDataProvider.DEFAULT_SAMPLE_EPG_URL
+                    },
+                    label = { Text("Fill with Free Demo Streams") },
+                    icon = {
+                        Icon(Icons.Default.PlayArrow, contentDescription = null, modifier = Modifier.size(16.dp))
+                    }
+                )
+            }
 
             if (uiState.error != null) {
                 Text(

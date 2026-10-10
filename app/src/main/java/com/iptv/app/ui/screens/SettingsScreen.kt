@@ -673,24 +673,54 @@ fun SettingToggleCard(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
     Card(
-        shape = RoundedCornerShape(14.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (checked) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+            }
+        ),
+        border = if (checked) {
+            androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
+        } else null,
         modifier = Modifier.fillMaxWidth()
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .clickable { onCheckedChange(!checked) }
-                .padding(16.dp),
+                .clickable {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onCheckedChange(!checked)
+                }
+                .padding(horizontal = 16.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = if (checked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(26.dp)
-            )
+            Surface(
+                shape = RoundedCornerShape(10.dp),
+                color = if (checked) {
+                    MaterialTheme.colorScheme.primaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+                modifier = Modifier.size(42.dp)
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = if (checked) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
 
             Spacer(modifier = Modifier.width(14.dp))
 
@@ -712,7 +742,10 @@ fun SettingToggleCard(
 
             Switch(
                 checked = checked,
-                onCheckedChange = onCheckedChange
+                onCheckedChange = {
+                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                    onCheckedChange(it)
+                }
             )
         }
     }

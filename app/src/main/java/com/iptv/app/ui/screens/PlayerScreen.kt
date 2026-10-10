@@ -660,6 +660,8 @@ fun PlayerScreen(
                         }
                     }
 
+                    val playerHaptic = LocalHapticFeedback.current
+
                     // Center playback controls
                     Row(
                         modifier = Modifier.align(Alignment.Center),
@@ -668,7 +670,10 @@ fun PlayerScreen(
                     ) {
                         // Previous channel button
                         IconButton(
-                            onClick = { viewModel.playPrevious() },
+                            onClick = {
+                                playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.playPrevious()
+                            },
                             modifier = Modifier
                                 .size(48.dp)
                                 .background(Color.White.copy(alpha = 0.2f), CircleShape)
@@ -685,12 +690,13 @@ fun PlayerScreen(
                         if (isVodMode || uiState.canGoBackToStart) {
                             IconButton(
                                 onClick = {
+                                    playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     val newPos = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
                                     exoPlayer.seekTo(newPos)
                                 },
                                 modifier = Modifier
-                                    .size(52.dp)
-                                    .background(Color.White.copy(alpha = 0.2f), CircleShape)
+                                .size(52.dp)
+                                .background(Color.White.copy(alpha = 0.2f), CircleShape)
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Replay10,
@@ -704,6 +710,7 @@ fun PlayerScreen(
                         // Play / Pause button
                         IconButton(
                             onClick = {
+                                playerHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                 if (exoPlayer.isPlaying) {
                                     exoPlayer.pause()
                                 } else {
@@ -726,6 +733,7 @@ fun PlayerScreen(
                         if (isVodMode || !uiState.isAtLiveEdge) {
                             IconButton(
                                 onClick = {
+                                    playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     if (!isVodMode && uiState.timeShiftOffsetMs <= 10_000L) {
                                         exoPlayer.seekToDefaultPosition()
                                     } else {
@@ -749,7 +757,10 @@ fun PlayerScreen(
 
                         // Next channel button
                         IconButton(
-                            onClick = { viewModel.playNext() },
+                            onClick = {
+                                playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                viewModel.playNext()
+                            },
                             modifier = Modifier
                                 .size(48.dp)
                                 .background(Color.White.copy(alpha = 0.2f), CircleShape)

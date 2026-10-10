@@ -118,6 +118,9 @@ fun ChannelListScreen(
             }
     }
 
+    var showOverflowMenu by remember { mutableStateOf(false) }
+    val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
     val rawChannels = remember(uiState.filteredChannels) {
         uiState.filteredChannels.map { it.channel }
     }
@@ -142,14 +145,26 @@ fun ChannelListScreen(
                         )
                     } else {
                         Column(
-                            modifier = Modifier.clickable { showPlaylistSwitcher = true }
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    showPlaylistSwitcher = true
+                                }
+                                .padding(vertical = 2.dp, horizontal = 4.dp)
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text("IPTV Player", fontWeight = FontWeight.Bold)
+                                Text(
+                                    text = "IPTV Player",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
                                 Icon(
                                     imageVector = Icons.Default.ArrowDropDown,
                                     contentDescription = "Switch Playlist",
-                                    modifier = Modifier.size(20.dp)
+                                    modifier = Modifier.size(20.dp),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             val activeName = uiState.activePair?.name ?: "Custom Playlist"
@@ -180,15 +195,7 @@ fun ChannelListScreen(
                         )
                     }
 
-                    // Playlist Switcher button
-                    IconButton(onClick = { showPlaylistSwitcher = true }) {
-                        Icon(
-                            imageVector = Icons.Default.SwapHoriz,
-                            contentDescription = "Switch Playlist"
-                        )
-                    }
-
-                    // EPG Programmes Guide
+                    // EPG Programmes Guide Quick Button
                     IconButton(onClick = onOpenEpgGuide) {
                         Icon(
                             imageVector = Icons.Default.CalendarMonth,
@@ -196,42 +203,87 @@ fun ChannelListScreen(
                         )
                     }
 
-                    // Grid / List View Mode toggle
-                    IconButton(onClick = { viewModel.toggleViewMode() }) {
+                    // Grid / List View Mode toggle with subtle haptic
+                    IconButton(onClick = {
+                        haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                        viewModel.toggleViewMode()
+                    }) {
                         Icon(
                             imageVector = if (uiState.viewMode == ViewMode.LIST) Icons.Default.GridView else Icons.AutoMirrored.Filled.ViewList,
                             contentDescription = "Toggle View Mode"
                         )
                     }
 
-                    // Filter Action Button with badge
-                    IconButton(onClick = { showFilterDialog = true }) {
-                        BadgedBox(
-                            badge = {
-                                if (viewModel.hasActiveFilters()) {
-                                    Badge(containerColor = MaterialTheme.colorScheme.secondary) {
-                                        Text("!")
-                                    }
-                                }
-                            }
-                        ) {
-                            Icon(Icons.Default.FilterList, contentDescription = "Filter Channels")
+                    // M3 Overflow Menu for Secondary Actions
+                    Box {
+                        IconButton(onClick = { showOverflowMenu = true }) {
+                            Icon(
+                                imageVector = Icons.Default.MoreVert,
+                                contentDescription = "More Options"
+                            )
                         }
-                    }
 
-                    // Quick Refresh / Reload Playlist
-                    IconButton(onClick = { viewModel.reloadCurrentPlaylist() }) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Reload Playlist")
-                    }
+                        DropdownMenu(
+                            expanded = showOverflowMenu,
+                            onDismissRequest = { showOverflowMenu = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("Switch Playlist") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.SwapHoriz, contentDescription = null)
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showPlaylistSwitcher = true
+                                }
+                            )
 
-                    // Settings Button
-                    IconButton(onClick = onOpenSettings) {
-                        Icon(Icons.Default.Settings, contentDescription = "Settings")
-                    }
+                            DropdownMenuItem(
+                                text = { Text("Reload Playlist") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Refresh, contentDescription = null)
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    viewModel.reloadCurrentPlaylist()
+                                }
+                            )
 
-                    // Change / Load Playlist Action Button
-                    IconButton(onClick = onChangePlaylist) {
-                        Icon(Icons.Default.FolderOpen, contentDescription = "Change Playlist")
+                            DropdownMenuItem(
+                                text = { Text("Channel Filters") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Tune, contentDescription = null)
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    showFilterDialog = true
+                                }
+                            )
+
+                            HorizontalDivider()
+
+                            DropdownMenuItem(
+                                text = { Text("Change Playlist URL") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.FolderOpen, contentDescription = null)
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    onChangePlaylist()
+                                }
+                            )
+
+                            DropdownMenuItem(
+                                text = { Text("Settings") },
+                                leadingIcon = {
+                                    Icon(Icons.Default.Settings, contentDescription = null)
+                                },
+                                onClick = {
+                                    showOverflowMenu = false
+                                    onOpenSettings()
+                                }
+                            )
+                        }
                     }
                 },
                 windowInsets = TopAppBarDefaults.windowInsets,
@@ -530,26 +582,96 @@ fun ChannelListScreen(
             // Empty State
             if (uiState.filteredChannels.isEmpty()) {
                 Box(
-                    modifier = Modifier.fillMaxSize(),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
+                    val emptyIcon = when {
+                        uiState.contentType == ContentTypeFilter.FAVORITES -> Icons.Default.FavoriteBorder
+                        uiState.searchQuery.isNotBlank() -> Icons.Default.SearchOff
+                        else -> Icons.Default.TvOff
+                    }
+                    val emptyTitle = when {
+                        uiState.contentType == ContentTypeFilter.FAVORITES -> "No Favorites Yet"
+                        uiState.searchQuery.isNotBlank() -> "No Results Found"
+                        else -> "No Channels Available"
+                    }
+                    val emptyDesc = when {
+                        uiState.contentType == ContentTypeFilter.FAVORITES -> "Tap the heart icon on any channel to pin it here for quick access."
+                        uiState.searchQuery.isNotBlank() -> "No channels, movies, or EPG entries matched \"${uiState.searchQuery}\"."
+                        else -> "No channels match the currently active category and filters."
+                    }
+
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            modifier = Modifier.size(72.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = emptyIcon,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                            }
+                        }
+
                         Text(
-                            text = when {
-                                uiState.contentType == ContentTypeFilter.FAVORITES -> "No favorite channels yet. Tap the heart icon to add favorites!"
-                                uiState.searchQuery.isNotBlank() -> "No channels matching '${uiState.searchQuery}'"
-                                else -> "No channels match current filters."
-                            },
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = emptyTitle,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
                         )
-                        if (viewModel.hasActiveFilters()) {
-                            TextButton(onClick = { viewModel.resetFilters() }) {
-                                Icon(Icons.Default.RestartAlt, contentDescription = null)
-                                Spacer(modifier = Modifier.width(4.dp))
+
+                        Text(
+                            text = emptyDesc,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                            modifier = Modifier.padding(horizontal = 16.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        if (uiState.searchQuery.isNotBlank()) {
+                            Button(
+                                onClick = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    viewModel.updateSearchQuery("")
+                                    isSearchActive = false
+                                }
+                            ) {
+                                Icon(Icons.Default.Close, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Clear Search")
+                            }
+                        } else if (viewModel.hasActiveFilters()) {
+                            Button(
+                                onClick = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    viewModel.resetFilters()
+                                }
+                            ) {
+                                Icon(Icons.Default.RestartAlt, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
                                 Text("Reset Filters")
+                            }
+                        } else if (uiState.contentType == ContentTypeFilter.FAVORITES) {
+                            OutlinedButton(
+                                onClick = {
+                                    haptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+                                    viewModel.setContentType(ContentTypeFilter.ALL)
+                                }
+                            ) {
+                                Icon(Icons.Default.Tv, contentDescription = null, modifier = Modifier.size(16.dp))
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text("Explore All Channels")
                             }
                         }
                     }
@@ -902,8 +1024,16 @@ fun ChannelCard(
 
                 Spacer(modifier = Modifier.width(4.dp))
 
+                val cardHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
                 // Favorite Button
-                IconButton(onClick = onToggleFavorite, modifier = Modifier.size(36.dp)) {
+                IconButton(
+                    onClick = {
+                        cardHaptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onToggleFavorite()
+                    },
+                    modifier = Modifier.size(36.dp)
+                ) {
                     Icon(
                         imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                         contentDescription = "Favorite",
@@ -1004,9 +1134,14 @@ fun ChannelGridCard(
                     }
                 }
 
+                val gridHaptic = androidx.compose.ui.platform.LocalHapticFeedback.current
+
                 // Favorite icon overlay top-right
                 IconButton(
-                    onClick = onToggleFavorite,
+                    onClick = {
+                        gridHaptic.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.LongPress)
+                        onToggleFavorite()
+                    },
                     modifier = Modifier
                         .align(Alignment.TopEnd)
                         .size(30.dp)
