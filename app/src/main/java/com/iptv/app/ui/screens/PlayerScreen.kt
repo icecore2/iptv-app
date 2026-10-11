@@ -53,11 +53,12 @@ import android.content.pm.ActivityInfo
 import android.content.res.Configuration
 import android.os.SystemClock
 import android.view.WindowManager
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.input.pointer.pointerInput
+import kotlin.math.abs
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import com.iptv.app.core.model.AppSettings
 import com.iptv.app.core.model.ChannelWithEpg
@@ -101,11 +102,27 @@ fun PlayerScreen(
     var isSwipingGesture by remember { mutableStateOf(false) }
     var gestureSeekDeltaMs by remember { mutableLongStateOf(0L) }
     var doubleTapFeedback by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
+    var verticalGestureFeedback by remember { mutableStateOf<Pair<Boolean, Int>?>(null) }
+    var currentBrightness by remember {
+        mutableFloatStateOf(0.5f)
+    }
+    var currentVolume by remember { mutableFloatStateOf(1.0f) }
+    var activeGestureMode by remember { mutableStateOf<String?>(null) }
+    var dragStartX by remember { mutableFloatStateOf(0f) }
+    var dragTotalDx by remember { mutableFloatStateOf(0f) }
+    var dragTotalDy by remember { mutableFloatStateOf(0f) }
 
     LaunchedEffect(doubleTapFeedback) {
         if (doubleTapFeedback != null) {
             delay(750)
             doubleTapFeedback = null
+        }
+    }
+
+    LaunchedEffect(verticalGestureFeedback) {
+        if (verticalGestureFeedback != null) {
+            delay(1200)
+            verticalGestureFeedback = null
         }
     }
 
@@ -290,18 +307,53 @@ fun PlayerScreen(
             }
             .pointerInput(uiState.isLocked, isVodMode) {
                 if (!uiState.isLocked) {
-                    detectHorizontalDragGestures(
-                        onDragStart = {
-                            isSwipingGesture = true
+                    val screenWidthPx = size.width.toFloat()
+                    detectDragGestures(
+                        onDragStart = { offset ->
+                            dragStartX = offset.x
+                            dragTotalDx = 0f
+                            dragTotalDy = 0f
+                            activeGestureMode = null
                             gestureSeekDeltaMs = 0L
                         },
-                        onHorizontalDrag = { change, dragAmount ->
+                        onDrag = { change, dragAmount ->
                             change.consume()
-                            gestureSeekDeltaMs += (dragAmount * 80f).toLong()
+                            dragTotalDx += dragAmount.x
+                            dragTotalDy += dragAmount.y
+
+                            if (activeGestureMode == null) {
+                                val absX = abs(dragTotalDx)
+                                val absY = abs(dragTotalDy)
+                                if (absX > 25f && absX > absY) {
+                                    activeGestureMode = "SEEK"
+                                    isSwipingGesture = true
+                                } else if (absY > 25f && absY > absX) {
+                                    activeGestureMode = if (dragStartX < screenWidthPx * 0.5f) "BRIGHTNESS" else "VOLUME"
+                                }
+                            }
+
+                            when (activeGestureMode) {
+                                "SEEK" -> {
+                                    gestureSeekDeltaMs += (dragAmount.x * 80f).toLong()
+                                }
+                                "BRIGHTNESS" -> {
+                                    val delta = -dragAmount.y / 600f
+                                    currentBrightness = (currentBrightness + delta).coerceIn(0.01f, 1.0f)
+                                    val lp = activity?.window?.attributes
+                                    lp?.screenBrightness = currentBrightness
+                                    activity?.window?.attributes = lp
+                                    verticalGestureFeedback = true to (currentBrightness * 100).toInt()
+                                }
+                                "VOLUME" -> {
+                                    val delta = -dragAmount.y / 600f
+                                    currentVolume = (currentVolume + delta).coerceIn(0.0f, 1.0f)
+                                    exoPlayer.volume = currentVolume
+                                    verticalGestureFeedback = false to (currentVolume * 100).toInt()
+                                }
+                            }
                         },
                         onDragEnd = {
-                            isSwipingGesture = false
-                            if (gestureSeekDeltaMs != 0L) {
+                            if (activeGestureMode == "SEEK" && gestureSeekDeltaMs != 0L) {
                                 if (isVodMode) {
                                     val dur = if (exoPlayer.duration > 0) exoPlayer.duration else Long.MAX_VALUE
                                     val target = (exoPlayer.currentPosition + gestureSeekDeltaMs).coerceIn(0L, dur)
@@ -314,12 +366,15 @@ fun PlayerScreen(
                                         exoPlayer.seekTo(target)
                                     }
                                 }
-                                gestureSeekDeltaMs = 0L
                             }
+                            isSwipingGesture = false
+                            gestureSeekDeltaMs = 0L
+                            activeGestureMode = null
                         },
                         onDragCancel = {
                             isSwipingGesture = false
                             gestureSeekDeltaMs = 0L
+                            activeGestureMode = null
                         }
                     )
                 }
@@ -482,6 +537,47 @@ fun PlayerScreen(
             }
         }
 
+        // Brightness & Volume Vertical Gesture HUD Overlay
+        if (verticalGestureFeedback != null) {
+            val isBrightness = verticalGestureFeedback!!.first
+            val percent = verticalGestureFeedback!!.second
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = Color.Black.copy(alpha = 0.85f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                shadowElevation = 12.dp,
+                modifier = Modifier.align(Alignment.Center)
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Icon(
+                        imageVector = if (isBrightness) Icons.Default.WbSunny else if (percent == 0) Icons.AutoMirrored.Filled.VolumeOff else Icons.AutoMirrored.Filled.VolumeUp,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(36.dp)
+                    )
+                    Text(
+                        text = if (isBrightness) "Brightness: $percent%" else "Volume: $percent%",
+                        color = Color.White,
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    LinearProgressIndicator(
+                        progress = { (percent / 100f).coerceIn(0f, 1f) },
+                        modifier = Modifier
+                            .width(120.dp)
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp)),
+                        color = MaterialTheme.colorScheme.primary,
+                        trackColor = Color.White.copy(alpha = 0.2f)
+                    )
+                }
+            }
+        }
+
         // Locked Screen Indicator (when locked)
         if (uiState.isLocked) {
             AnimatedVisibility(
@@ -603,6 +699,45 @@ fun PlayerScreen(
                             }
                         }
 
+                        // Audio Track selection button
+                        IconButton(onClick = { viewModel.setAudioDialogVisible(true) }) {
+                            Icon(
+                                imageVector = Icons.Default.Audiotrack,
+                                contentDescription = "Audio Tracks",
+                                tint = Color.White
+                            )
+                        }
+
+                        // Subtitles & Captions selection button
+                        IconButton(onClick = { viewModel.setSubtitleDialogVisible(true) }) {
+                            Icon(
+                                imageVector = Icons.Default.ClosedCaption,
+                                contentDescription = "Subtitles",
+                                tint = if (uiState.selectedSubtitleTrackId != null) MaterialTheme.colorScheme.primary else Color.White
+                            )
+                        }
+
+                        // Picture-in-Picture Button (Android 8.0 / API 26+)
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.setControlsVisible(false)
+                                    try {
+                                        val params = android.app.PictureInPictureParams.Builder()
+                                            .setAspectRatio(android.util.Rational(16, 9))
+                                            .build()
+                                        activity?.enterPictureInPictureMode(params)
+                                    } catch (_: Exception) {}
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PictureInPictureAlt,
+                                    contentDescription = "Picture-in-Picture",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+
                         // Aspect ratio mode cycle button
                         TextButton(
                             onClick = { viewModel.cycleAspectRatio() },
@@ -662,13 +797,13 @@ fun PlayerScreen(
 
                     val playerHaptic = LocalHapticFeedback.current
 
-                    // Center playback controls
+                    // Center playback controls (Stabilized 5-button transport layout)
                     Row(
                         modifier = Modifier.align(Alignment.Center),
                         horizontalArrangement = Arrangement.spacedBy(14.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        // Previous channel button
+                        // 1. Previous channel button
                         IconButton(
                             onClick = {
                                 playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -686,28 +821,33 @@ fun PlayerScreen(
                             )
                         }
 
-                        // Rewind 10 seconds (VOD or Live Buffer)
-                        if (isVodMode || uiState.canGoBackToStart) {
-                            IconButton(
-                                onClick = {
+                        // 2. Rewind 10 seconds button (Always present, gracefully enabled/disabled)
+                        val canRewind = isVodMode || uiState.canGoBackToStart
+                        IconButton(
+                            onClick = {
+                                if (canRewind) {
                                     playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     val newPos = (exoPlayer.currentPosition - 10_000L).coerceAtLeast(0L)
                                     exoPlayer.seekTo(newPos)
-                                },
-                                modifier = Modifier
+                                }
+                            },
+                            enabled = canRewind,
+                            modifier = Modifier
                                 .size(52.dp)
-                                .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Replay10,
-                                    contentDescription = "Rewind 10s",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(32.dp)
+                                .background(
+                                    if (canRewind) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
+                                    CircleShape
                                 )
-                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Replay10,
+                                contentDescription = "Rewind 10s",
+                                tint = if (canRewind) Color.White else Color.White.copy(alpha = 0.35f),
+                                modifier = Modifier.size(32.dp)
+                            )
                         }
 
-                        // Play / Pause button
+                        // 3. Play / Pause button
                         IconButton(
                             onClick = {
                                 playerHaptic.performHapticFeedback(HapticFeedbackType.LongPress)
@@ -729,10 +869,11 @@ fun PlayerScreen(
                             )
                         }
 
-                        // Forward 10 seconds (VOD or Live Buffer if behind live)
-                        if (isVodMode || !uiState.isAtLiveEdge) {
-                            IconButton(
-                                onClick = {
+                        // 4. Forward 10 seconds button (Always present, gracefully enabled/disabled)
+                        val canForward = isVodMode || !uiState.isAtLiveEdge
+                        IconButton(
+                            onClick = {
+                                if (canForward) {
                                     playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                     if (!isVodMode && uiState.timeShiftOffsetMs <= 10_000L) {
                                         exoPlayer.seekToDefaultPosition()
@@ -741,21 +882,25 @@ fun PlayerScreen(
                                         val newPos = (exoPlayer.currentPosition + 10_000L).coerceAtMost(dur)
                                         exoPlayer.seekTo(newPos)
                                     }
-                                },
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .background(Color.White.copy(alpha = 0.2f), CircleShape)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Forward10,
-                                    contentDescription = "Forward 10s",
-                                    tint = Color.White,
-                                    modifier = Modifier.size(32.dp)
+                                }
+                            },
+                            enabled = canForward,
+                            modifier = Modifier
+                                .size(52.dp)
+                                .background(
+                                    if (canForward) Color.White.copy(alpha = 0.2f) else Color.White.copy(alpha = 0.08f),
+                                    CircleShape
                                 )
-                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Forward10,
+                                contentDescription = "Forward 10s",
+                                tint = if (canForward) Color.White else Color.White.copy(alpha = 0.35f),
+                                modifier = Modifier.size(32.dp)
+                            )
                         }
 
-                        // Next channel button
+                        // 5. Next channel button
                         IconButton(
                             onClick = {
                                 playerHaptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
@@ -797,7 +942,7 @@ fun PlayerScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Primary Navigation Icons (Channels, EPG, VOD, and time-shift actions)
+                            // Primary Navigation Icons (Channels, EPG, VOD, Buffer, and time-shift actions)
                             Row(
                                 modifier = Modifier
                                     .weight(1f, fill = false)
@@ -832,26 +977,37 @@ fun PlayerScreen(
                                     }
                                 )
 
+                                // Dedicated Playback Buffer Preset Button
+                                PlayerActionButton(
+                                    icon = Icons.Default.Speed,
+                                    label = "Buffer: ${settings.bufferDurationSeconds}s",
+                                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.25f),
+                                    contentColor = Color.White,
+                                    onClick = { viewModel.setBufferDialogVisible(true) }
+                                )
+
                                 // Go to Starting Point Button (For Live Time-Shift)
-                                if (!isVodMode && uiState.canGoBackToStart) {
+                                if (!isVodMode) {
                                     PlayerActionButton(
                                         icon = Icons.Default.FirstPage,
                                         label = "Go to Start",
-                                        containerColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.85f),
-                                        contentColor = Color.White,
+                                        containerColor = if (uiState.canGoBackToStart) MaterialTheme.colorScheme.secondary.copy(alpha = 0.85f) else Color.White.copy(alpha = 0.12f),
+                                        contentColor = if (uiState.canGoBackToStart) Color.White else Color.White.copy(alpha = 0.35f),
                                         onClick = {
-                                            val target = (exoPlayer.currentPosition - uiState.livePositionFromStartMs).coerceAtLeast(0L)
-                                            exoPlayer.seekTo(target)
+                                            if (uiState.canGoBackToStart) {
+                                                val target = (exoPlayer.currentPosition - uiState.livePositionFromStartMs).coerceAtLeast(0L)
+                                                exoPlayer.seekTo(target)
+                                            }
                                         }
                                     )
                                 }
 
-                                // Jump to Live Button (When Time-Shifted behind Live)
-                                if (!isVodMode && !uiState.isAtLiveEdge) {
+                                // Jump to Live Button (Live Edge Sync & DVR status)
+                                if (!isVodMode) {
                                     PlayerActionButton(
                                         icon = Icons.Default.FastForward,
-                                        label = "Jump to Live",
-                                        containerColor = Color(0xFF2E7D32),
+                                        label = if (uiState.isAtLiveEdge) "LIVE (Synced)" else "Jump to Live (-${formatDuration(uiState.timeShiftOffsetMs)})",
+                                        containerColor = if (uiState.isAtLiveEdge) Color(0xFF2E7D32).copy(alpha = 0.7f) else Color(0xFFE65100),
                                         contentColor = Color.White,
                                         onClick = { exoPlayer.seekToDefaultPosition() }
                                     )
@@ -1184,6 +1340,39 @@ fun PlayerScreen(
                 }
             },
             onDismiss = { selectedMetadataProgramme = null }
+        )
+    }
+
+    // 8. Buffer Preset Dialog
+    if (uiState.isBufferDialogVisible) {
+        BufferPresetDialog(
+            currentDurationSeconds = settings.bufferDurationSeconds,
+            bufferPercentage = uiState.streamInfo.bufferPercentage,
+            onSelectDuration = { newDuration ->
+                settingsViewModel?.setBufferDuration(newDuration)
+                viewModel.setBufferDuration(newDuration, context)
+            },
+            onDismiss = { viewModel.setBufferDialogVisible(false) }
+        )
+    }
+
+    // 9. Audio Track Selection Dialog
+    if (uiState.isAudioDialogVisible) {
+        AudioTrackDialog(
+            availableTracks = uiState.availableAudioTracks,
+            selectedTrackId = uiState.selectedAudioTrackId,
+            onSelectTrack = { viewModel.selectAudioTrack(it) },
+            onDismiss = { viewModel.setAudioDialogVisible(false) }
+        )
+    }
+
+    // 10. Subtitles & Captions Dialog
+    if (uiState.isSubtitleDialogVisible) {
+        SubtitleTrackDialog(
+            availableTracks = uiState.availableSubtitleTracks,
+            selectedTrackId = uiState.selectedSubtitleTrackId,
+            onSelectTrack = { viewModel.selectSubtitleTrack(it) },
+            onDismiss = { viewModel.setSubtitleDialogVisible(false) }
         )
     }
 }

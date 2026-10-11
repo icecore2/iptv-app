@@ -30,11 +30,30 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.lang.ref.WeakReference
 
+import androidx.media3.common.C
+import androidx.media3.common.TrackSelectionOverride
+import androidx.media3.common.Tracks
+
 enum class AspectRatioMode {
     FIT,   // Letterbox / Pillarbox
     ZOOM,  // Crop to fill screen
     FILL   // Stretch to fill screen
 }
+
+data class AudioTrackInfo(
+    val id: String,
+    val label: String,
+    val language: String? = null,
+    val channelCount: Int = 0,
+    val isSelected: Boolean = false
+)
+
+data class SubtitleTrackInfo(
+    val id: String,
+    val label: String,
+    val language: String? = null,
+    val isSelected: Boolean = false
+)
 
 data class StreamInfo(
     val resolution: String = "Auto",
@@ -44,7 +63,8 @@ data class StreamInfo(
     val frameRate: String = "Auto",
     val streamFormat: String = "HLS (.m3u8)",
     val streamUrl: String = "",
-    val bufferPercentage: Int = 0
+    val bufferPercentage: Int = 0,
+    val bufferedDurationMs: Long = 0L
 )
 
 data class PlayerUiState(
@@ -73,6 +93,19 @@ data class PlayerUiState(
     val isSleepTimerDialogVisible: Boolean = false,
     val originalChannel: M3uItem? = null,
 
+    // Buffer preset and dialog states
+    val bufferDurationSeconds: Int = 15,
+    val bufferStorageLimitMb: Int = 1024,
+    val isBufferDialogVisible: Boolean = false,
+
+    // Audio & Subtitle track states
+    val availableAudioTracks: List<AudioTrackInfo> = emptyList(),
+    val selectedAudioTrackId: String? = null,
+    val isAudioDialogVisible: Boolean = false,
+    val availableSubtitleTracks: List<SubtitleTrackInfo> = emptyList(),
+    val selectedSubtitleTrackId: String? = null,
+    val isSubtitleDialogVisible: Boolean = false,
+
     // Time-Shift Replay Buffer for Live Streams
     val liveSessionStartTimeMs: Long = 0L,
     val liveSessionDurationMs: Long = 0L,
@@ -87,7 +120,8 @@ data class PlayerUiState(
     val hasAnyDialogOpen: Boolean
         get() = isStreamInfoDialogVisible || isEpgSheetVisible ||
                 isChannelSelectorVisible || isSpeedDialogVisible ||
-                isSleepTimerDialogVisible
+                isSleepTimerDialogVisible || isBufferDialogVisible ||
+                isAudioDialogVisible || isSubtitleDialogVisible
 }
 
 class PlayerViewModel : ViewModel() {
@@ -169,14 +203,36 @@ class PlayerViewModel : ViewModel() {
         saveChannelThumbnail(current.id, scaled)
     }
 
+    private var currentBufferSeconds: Int = -1
+    private var currentStorageLimitMb: Int = -1
+
     fun getOrCreatePlayer(
         context: Context,
-        bufferDurationSeconds: Int = 5,
-        bufferStorageLimitMb: Int = 100
+        bufferDurationSeconds: Int = 15,
+        bufferStorageLimitMb: Int = 1024
     ): ExoPlayer {
-        exoPlayer?.let { return it }
+        val existing = exoPlayer
+        if (existing != null && currentBufferSeconds == bufferDurationSeconds && currentStorageLimitMb == bufferStorageLimitMb) {
+            return existing
+        }
 
         val appContext = context.applicationContext
+        val prevPos = existing?.currentPosition ?: 0L
+        val prevPlayWhenReady = existing?.playWhenReady ?: true
+        val prevChannel = _uiState.value.currentChannel
+
+        existing?.release()
+        exoPlayer = null
+
+        currentBufferSeconds = bufferDurationSeconds
+        currentStorageLimitMb = bufferStorageLimitMb
+        _uiState.update {
+            it.copy(
+                bufferDurationSeconds = bufferDurationSeconds,
+                bufferStorageLimitMb = bufferStorageLimitMb
+            )
+        }
+
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 (bufferDurationSeconds * 1000).coerceAtLeast(2000),
@@ -194,7 +250,7 @@ class PlayerViewModel : ViewModel() {
             .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build().apply {
-                playWhenReady = true
+                playWhenReady = prevPlayWhenReady
                 volume = if (_uiState.value.isMuted) 0f else 1f
                 playbackParameters = PlaybackParameters(_uiState.value.playbackSpeed)
             }
@@ -202,13 +258,21 @@ class PlayerViewModel : ViewModel() {
         attachPlayerListener(player)
         exoPlayer = player
 
-        // If a channel is already selected, start playback on new player
-        val cur = _uiState.value.currentChannel
-        if (cur != null && cur.streamUrl.isNotBlank()) {
-            val mediaItem = MediaItem.fromUri(cur.streamUrl)
+        activePlayerView?.get()?.let { pv ->
+            pv.player = player
+        }
+
+        // If a channel is already selected, resume playback on new player
+        if (prevChannel != null && prevChannel.streamUrl.isNotBlank()) {
+            val mediaItem = MediaItem.fromUri(prevChannel.streamUrl)
             player.setMediaItem(mediaItem)
             player.prepare()
-            player.play()
+            if (prevPos > 0L && (prevChannel.isVod || _uiState.value.isVodPlayback)) {
+                player.seekTo(prevPos)
+            }
+            if (prevPlayWhenReady) {
+                player.play()
+            }
         }
 
         return player
@@ -238,6 +302,10 @@ class PlayerViewModel : ViewModel() {
                 setError("Playback error: ${error.message ?: "Stream unavailable"}")
             }
 
+            override fun onTracksChanged(tracks: Tracks) {
+                updateTracks(tracks)
+            }
+
             override fun onVideoSizeChanged(videoSize: VideoSize) {
                 val currentInfo = _uiState.value.streamInfo
                 val resolutionStr = if (videoSize.width > 0 && videoSize.height > 0) {
@@ -253,7 +321,8 @@ class PlayerViewModel : ViewModel() {
                 updateStreamInfo(
                     currentInfo.copy(
                         resolution = resolutionStr,
-                        bufferPercentage = player.bufferedPercentage
+                        bufferPercentage = player.bufferedPercentage,
+                        bufferedDurationMs = player.totalBufferedDuration
                     )
                 )
             }
@@ -568,6 +637,172 @@ class PlayerViewModel : ViewModel() {
 
     fun setSleepTimerDialogVisible(visible: Boolean) {
         _uiState.update { it.copy(isSleepTimerDialogVisible = visible) }
+    }
+
+    fun setBufferDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(isBufferDialogVisible = visible) }
+    }
+
+    fun setAudioDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(isAudioDialogVisible = visible) }
+    }
+
+    fun setSubtitleDialogVisible(visible: Boolean) {
+        _uiState.update { it.copy(isSubtitleDialogVisible = visible) }
+    }
+
+    fun updateTracks(tracks: Tracks) {
+        val audioTracks = mutableListOf<AudioTrackInfo>()
+        val subtitleTracks = mutableListOf<SubtitleTrackInfo>()
+
+        for (group in tracks.groups) {
+            val mediaTrackGroup = group.mediaTrackGroup
+            val type = group.type
+            for (i in 0 until mediaTrackGroup.length) {
+                val format = mediaTrackGroup.getFormat(i)
+                val isSelected = group.isTrackSelected(i)
+                val id = "${mediaTrackGroup.id}_$i"
+                val langTag = format.language
+                val langDisplay = if (!langTag.isNullOrBlank()) {
+                    try {
+                        val loc = java.util.Locale.forLanguageTag(langTag)
+                        loc.displayLanguage.ifBlank { langTag }
+                    } catch (_: Exception) {
+                        langTag
+                    }
+                } else {
+                    "Track ${audioTracks.size + 1}"
+                }
+
+                if (type == C.TRACK_TYPE_AUDIO) {
+                    val channels = if (format.channelCount > 0) {
+                        when (format.channelCount) {
+                            1 -> "Mono"
+                            2 -> "Stereo"
+                            6 -> "5.1 Surround"
+                            8 -> "7.1 Surround"
+                            else -> "${format.channelCount} Ch"
+                        }
+                    } else ""
+                    val label = listOfNotNull(
+                        format.label?.ifBlank { null } ?: langDisplay,
+                        channels.ifBlank { null }
+                    ).joinToString(" • ")
+
+                    audioTracks.add(
+                        AudioTrackInfo(
+                            id = id,
+                            label = label,
+                            language = format.language,
+                            channelCount = format.channelCount,
+                            isSelected = isSelected
+                        )
+                    )
+                } else if (type == C.TRACK_TYPE_TEXT) {
+                    val label = format.label?.ifBlank { null } ?: langDisplay
+                    subtitleTracks.add(
+                        SubtitleTrackInfo(
+                            id = id,
+                            label = label,
+                            language = format.language,
+                            isSelected = isSelected
+                        )
+                    )
+                }
+            }
+        }
+
+        _uiState.update {
+            it.copy(
+                availableAudioTracks = audioTracks,
+                selectedAudioTrackId = audioTracks.firstOrNull { t -> t.isSelected }?.id,
+                availableSubtitleTracks = subtitleTracks,
+                selectedSubtitleTrackId = subtitleTracks.firstOrNull { t -> t.isSelected }?.id
+            )
+        }
+    }
+
+    fun selectAudioTrack(trackId: String?) {
+        exoPlayer?.let { player ->
+            val tracks = player.currentTracks
+            val paramsBuilder = player.trackSelectionParameters.buildUpon()
+
+            if (trackId == null) {
+                paramsBuilder.clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            } else {
+                for (group in tracks.groups) {
+                    if (group.type == C.TRACK_TYPE_AUDIO) {
+                        val mediaTrackGroup = group.mediaTrackGroup
+                        for (i in 0 until mediaTrackGroup.length) {
+                            val id = "${mediaTrackGroup.id}_$i"
+                            if (id == trackId) {
+                                paramsBuilder.setOverrideForType(
+                                    TrackSelectionOverride(mediaTrackGroup, listOf(i))
+                                )
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+            player.trackSelectionParameters = paramsBuilder.build()
+        }
+        _uiState.update { state ->
+            state.copy(
+                selectedAudioTrackId = trackId,
+                availableAudioTracks = state.availableAudioTracks.map {
+                    it.copy(isSelected = it.id == trackId)
+                }
+            )
+        }
+    }
+
+    fun selectSubtitleTrack(trackId: String?) {
+        exoPlayer?.let { player ->
+            val tracks = player.currentTracks
+            val paramsBuilder = player.trackSelectionParameters.buildUpon()
+
+            if (trackId == null) {
+                paramsBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                paramsBuilder.clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            } else {
+                paramsBuilder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+                for (group in tracks.groups) {
+                    if (group.type == C.TRACK_TYPE_TEXT) {
+                        val mediaTrackGroup = group.mediaTrackGroup
+                        for (i in 0 until mediaTrackGroup.length) {
+                            val id = "${mediaTrackGroup.id}_$i"
+                            if (id == trackId) {
+                                paramsBuilder.setOverrideForType(
+                                    TrackSelectionOverride(mediaTrackGroup, listOf(i))
+                                )
+                                break
+                            }
+                        }
+                    }
+                }
+            }
+            player.trackSelectionParameters = paramsBuilder.build()
+        }
+        _uiState.update { state ->
+            state.copy(
+                selectedSubtitleTrackId = trackId,
+                availableSubtitleTracks = state.availableSubtitleTracks.map {
+                    it.copy(isSelected = it.id == trackId)
+                }
+            )
+        }
+    }
+
+    fun setBufferDuration(seconds: Int, context: Context? = null) {
+        _uiState.update { it.copy(bufferDurationSeconds = seconds) }
+        if (context != null) {
+            getOrCreatePlayer(
+                context = context,
+                bufferDurationSeconds = seconds,
+                bufferStorageLimitMb = _uiState.value.bufferStorageLimitMb
+            )
+        }
     }
 
     fun stopPlayback() {

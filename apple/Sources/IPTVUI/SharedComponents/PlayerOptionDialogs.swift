@@ -151,3 +151,78 @@ public struct SleepTimerDialog: View {
         .clipShape(RoundedRectangle(cornerRadius: 16))
     }
 }
+
+/// Buffer preset selection dialog sheet.
+public struct BufferPresetSheet: View {
+    public let currentDuration: Int
+    public let bufferPercentage: Int
+    public let onSelectDuration: (Int) -> Void
+    public let onDismiss: () -> Void
+
+    public init(
+        currentDuration: Int,
+        bufferPercentage: Int,
+        onSelectDuration: @escaping (Int) -> Void,
+        onDismiss: @escaping () -> Void
+    ) {
+        self.currentDuration = currentDuration
+        self.bufferPercentage = bufferPercentage
+        self.onSelectDuration = onSelectDuration
+        self.onDismiss = onDismiss
+    }
+
+    public var body: some View {
+        VStack(spacing: 16) {
+            HStack {
+                Label("Playback Buffer", systemImage: "speedometer")
+                    .font(.headline)
+                Spacer()
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                }
+                .buttonStyle(.plain)
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                HStack {
+                    Text("Buffer Fill Level")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text("\(bufferPercentage)%")
+                        .font(.caption.bold())
+                }
+                ProgressView(value: Double(min(max(0, bufferPercentage), 100)), total: 100.0)
+            }
+            .padding()
+            .background(Color.secondary.opacity(0.1))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+
+            ForEach(AppSettings.bufferPresets, id: \.0) { seconds, label in
+                Button(action: {
+                    onSelectDuration(seconds)
+                    onDismiss()
+                }) {
+                    HStack {
+                        Text(label)
+                            .font(.subheadline)
+                        Spacer()
+                        if currentDuration == seconds {
+                            Image(systemName: "checkmark")
+                                .foregroundStyle(Color.accentColor)
+                        }
+                    }
+                    .padding()
+                    .background(Color.secondary.opacity(0.1))
+                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(20)
+        .frame(maxWidth: 360)
+        .background(.ultraThickMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 16))
+    }
+}

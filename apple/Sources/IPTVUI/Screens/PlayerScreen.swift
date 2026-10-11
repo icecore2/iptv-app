@@ -149,6 +149,17 @@ public struct PlayerScreen: View {
                 onDismiss: { viewModel.setSleepTimerDialogVisible(false) }
             )
         }
+        .sheet(isPresented: $viewModel.isBufferDialogVisible) {
+            BufferPresetSheet(
+                currentDuration: settingsViewModel.settings.bufferDurationSeconds,
+                bufferPercentage: viewModel.streamInfo.bufferPercentage,
+                onSelectDuration: { sec in
+                    settingsViewModel.setBufferDuration(sec)
+                    viewModel.setBufferDialogVisible(false)
+                },
+                onDismiss: { viewModel.setBufferDialogVisible(false) }
+            )
+        }
     }
 
     // MARK: - Gestures
@@ -353,18 +364,25 @@ public struct PlayerScreen: View {
 
             // Transport Control Buttons
             if !viewModel.isLocked {
-                HStack(spacing: 20) {
+                HStack(spacing: 16) {
                     // Previous Channel
                     Button(action: { viewModel.playPrevious() }) {
                         Image(systemName: "backward.end.fill")
                             .font(.title2)
                     }
 
-                    // Seek Backward 10s
-                    Button(action: { viewModel.seekBy(deltaSeconds: -10) }) {
+                    // Seek Backward 10s (Always present, gracefully enabled/disabled)
+                    let canRewind = viewModel.isVodPlayback || viewModel.canGoBackToStart
+                    Button(action: {
+                        if canRewind {
+                            viewModel.seekBy(deltaSeconds: -10)
+                        }
+                    }) {
                         Image(systemName: "gobackward.10")
                             .font(.title2)
                     }
+                    .disabled(!canRewind)
+                    .opacity(canRewind ? 1.0 : 0.35)
 
                     // Play / Pause
                     Button(action: { viewModel.togglePlayPause() }) {
@@ -372,11 +390,18 @@ public struct PlayerScreen: View {
                             .font(.system(size: 48))
                     }
 
-                    // Seek Forward 10s
-                    Button(action: { viewModel.seekBy(deltaSeconds: 10) }) {
+                    // Seek Forward 10s (Always present, gracefully enabled/disabled)
+                    let canForward = viewModel.isVodPlayback || !viewModel.isAtLiveEdge
+                    Button(action: {
+                        if canForward {
+                            viewModel.seekBy(deltaSeconds: 10)
+                        }
+                    }) {
                         Image(systemName: "goforward.10")
                             .font(.title2)
                     }
+                    .disabled(!canForward)
+                    .opacity(canForward ? 1.0 : 0.35)
 
                     // Next Channel
                     Button(action: { viewModel.playNext() }) {
@@ -385,6 +410,53 @@ public struct PlayerScreen: View {
                     }
 
                     Spacer()
+
+                    // Playback Buffer Preset Button
+                    Button(action: { viewModel.setBufferDialogVisible(true) }) {
+                        HStack(spacing: 3) {
+                            Image(systemName: "speedometer")
+                                .font(.caption)
+                            Text("\(settingsViewModel.settings.bufferDurationSeconds)s")
+                                .font(.caption2.bold())
+                        }
+                        .padding(.horizontal, 6)
+                        .padding(.vertical, 3)
+                        .background(Color.white.opacity(0.2))
+                        .clipShape(Capsule())
+                    }
+
+                    // Go to Start (Live Time-Shift)
+                    if !viewModel.isVodPlayback {
+                        Button(action: {
+                            if viewModel.canGoBackToStart {
+                                viewModel.seekBy(deltaSeconds: -Double(viewModel.livePositionFromStartMs) / 1000.0)
+                            }
+                        }) {
+                            Image(systemName: "backward.to.line")
+                                .font(.title3)
+                        }
+                        .disabled(!viewModel.canGoBackToStart)
+                        .opacity(viewModel.canGoBackToStart ? 1.0 : 0.35)
+                    }
+
+                    // Jump to Live Button (Live Edge Sync)
+                    if !viewModel.isVodPlayback {
+                        Button(action: {
+                            viewModel.seekBy(deltaSeconds: Double(viewModel.timeShiftOffsetMs) / 1000.0)
+                        }) {
+                            HStack(spacing: 4) {
+                                Circle()
+                                    .fill(viewModel.isAtLiveEdge ? Color.green : Color.orange)
+                                    .frame(width: 6, height: 6)
+                                Text(viewModel.isAtLiveEdge ? "LIVE" : "-\(formatTime(viewModel.timeShiftOffsetMs))")
+                                    .font(.caption2.bold())
+                            }
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 3)
+                            .background(viewModel.isAtLiveEdge ? Color.green.opacity(0.3) : Color.orange.opacity(0.3))
+                            .clipShape(Capsule())
+                        }
+                    }
 
                     // Channel Selector Drawer
                     Button(action: { viewModel.setChannelSelectorVisible(true) }) {
@@ -449,8 +521,14 @@ public struct PlayerScreen: View {
             }
             .padding(.top, 96)
             .padding(.leading, 16)
-            Spacer()
         }
+    }
+
+    private func formatTime(_ ms: Int64) -> String {
+        let totalSeconds = max(0, ms / 1000)
+        let minutes = totalSeconds / 60
+        let seconds = totalSeconds % 60
+        return String(format: "%02d:%02d", minutes, seconds)
     }
 }
 

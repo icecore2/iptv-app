@@ -350,4 +350,83 @@ class PlayerViewModelTest {
         vm.playChannel(channels[1], channels, matcher)
         assertEquals("Channel 2", vm.uiState.value.currentChannel?.name)
     }
+
+    @Test
+    fun testBufferDialogVisibilityAndDuration() {
+        val vm = PlayerViewModel()
+        assertFalse(vm.uiState.value.isBufferDialogVisible)
+        assertEquals(15, vm.uiState.value.bufferDurationSeconds)
+
+        vm.setBufferDialogVisible(true)
+        assertTrue(vm.uiState.value.isBufferDialogVisible)
+        assertTrue(vm.uiState.value.hasAnyDialogOpen)
+
+        vm.setBufferDuration(30)
+        assertEquals(30, vm.uiState.value.bufferDurationSeconds)
+
+        vm.setBufferDialogVisible(false)
+        assertFalse(vm.uiState.value.isBufferDialogVisible)
+    }
+
+    @Test
+    fun testAudioDialogAndTrackSelection() {
+        val vm = PlayerViewModel()
+        assertFalse(vm.uiState.value.isAudioDialogVisible)
+
+        vm.setAudioDialogVisible(true)
+        assertTrue(vm.uiState.value.isAudioDialogVisible)
+        assertTrue(vm.uiState.value.hasAnyDialogOpen)
+
+        // Select track updates state
+        vm.selectAudioTrack("track_audio_1")
+        assertEquals("track_audio_1", vm.uiState.value.selectedAudioTrackId)
+
+        vm.selectAudioTrack(null)
+        assertEquals(null, vm.uiState.value.selectedAudioTrackId)
+
+        vm.setAudioDialogVisible(false)
+        assertFalse(vm.uiState.value.isAudioDialogVisible)
+    }
+
+    @Test
+    fun testSubtitleDialogAndTrackSelection() {
+        val vm = PlayerViewModel()
+        assertFalse(vm.uiState.value.isSubtitleDialogVisible)
+
+        vm.setSubtitleDialogVisible(true)
+        assertTrue(vm.uiState.value.isSubtitleDialogVisible)
+        assertTrue(vm.uiState.value.hasAnyDialogOpen)
+
+        vm.selectSubtitleTrack("track_sub_1")
+        assertEquals("track_sub_1", vm.uiState.value.selectedSubtitleTrackId)
+
+        vm.selectSubtitleTrack(null)
+        assertEquals(null, vm.uiState.value.selectedSubtitleTrackId)
+
+        vm.setSubtitleDialogVisible(false)
+        assertFalse(vm.uiState.value.isSubtitleDialogVisible)
+    }
+
+    @Test
+    fun testLiveBufferState_atLiveEdgeAndTimeShifted() {
+        val vm = PlayerViewModel()
+        vm.resetLiveBuffer()
+
+        // Fresh session
+        assertTrue(vm.uiState.value.isAtLiveEdge)
+        assertEquals(0L, vm.uiState.value.timeShiftOffsetMs)
+        assertFalse(vm.uiState.value.canGoBackToStart)
+
+        // Playing live: elapsed 10s, at position 10s (within 3s live edge)
+        vm.updateLiveBufferProgress(sessionDurationMs = 10_000L, positionFromStartMs = 10_000L)
+        assertTrue(vm.uiState.value.isAtLiveEdge)
+        assertEquals(0L, vm.uiState.value.timeShiftOffsetMs)
+        assertTrue(vm.uiState.value.canGoBackToStart)
+
+        // Time-shifted behind live by 5 seconds
+        vm.updateLiveBufferProgress(sessionDurationMs = 15_000L, positionFromStartMs = 10_000L)
+        assertFalse(vm.uiState.value.isAtLiveEdge)
+        assertEquals(5_000L, vm.uiState.value.timeShiftOffsetMs)
+        assertTrue(vm.uiState.value.canGoBackToStart)
+    }
 }

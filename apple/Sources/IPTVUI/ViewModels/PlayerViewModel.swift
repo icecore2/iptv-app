@@ -35,6 +35,7 @@ public final class PlayerViewModel: ObservableObject {
     @Published public var isChannelSelectorVisible: Bool = false
     @Published public var isSpeedDialogVisible: Bool = false
     @Published public var isSleepTimerDialogVisible: Bool = false
+    @Published public var isBufferDialogVisible: Bool = false
     @Published public var originalChannel: M3uItem? = nil
 
     // Time-Shift Replay Buffer for Live Streams
@@ -71,7 +72,7 @@ public final class PlayerViewModel: ObservableObject {
     public var hasAnyDialogOpen: Bool {
         isStreamInfoDialogVisible || isEpgSheetVisible ||
         isChannelSelectorVisible || isSpeedDialogVisible ||
-        isSleepTimerDialogVisible
+        isSleepTimerDialogVisible || isBufferDialogVisible
     }
 
     private func bindPlayerEngine() {
@@ -376,5 +377,9 @@ public final class PlayerViewModel: ObservableObject {
 
     public func setSleepTimerDialogVisible(_ visible: Bool) {
         isSleepTimerDialogVisible = visible
+    }
+
+    public func setBufferDialogVisible(_ visible: Bool) {
+        isBufferDialogVisible = visible
     }
 }
